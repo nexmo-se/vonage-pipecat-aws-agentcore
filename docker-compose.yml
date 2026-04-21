@@ -1,0 +1,38 @@
+services:
+  # ─────────────────────────────────────────────────────────────────
+  # C2 — Vonage Video Connector SDK (Linux only)
+  # Run: docker compose run --rm c2-video-connector
+  # ─────────────────────────────────────────────────────────────────
+  c2-video-connector:
+    build:
+      context: ./tests/c2_video_connector_sdk
+      dockerfile: Dockerfile
+    env_file: .env
+    network_mode: host
+    profiles: [c2]
+
+  # ─────────────────────────────────────────────────────────────────
+  # C3 — Pipecat Transport echo bot (Linux only)
+  # Run: docker compose run --rm c3-pipecat-transport
+  # ─────────────────────────────────────────────────────────────────
+  c3-pipecat-transport:
+    build:
+      context: ./tests/c3_pipecat_transport
+      dockerfile: Dockerfile
+    env_file: .env
+    network_mode: host
+    profiles: [c3]
+
+  # ─────────────────────────────────────────────────────────────────
+  # app — Full integrated agent (Linux only)
+  # Run: docker compose up app
+  # ─────────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    env_file: .env
+    ports:
+      - "${PORT:-8000}:8000"
+    restart: unless-stopped
+    profiles: [app]
