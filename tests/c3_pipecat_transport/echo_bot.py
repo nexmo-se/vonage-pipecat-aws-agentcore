@@ -27,10 +27,11 @@ async def run_echo_bot() -> None:
     session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
 
     # ── Validate env vars ─────────────────────────────────────────
-    missing = [k for k, v in {
-        "VONAGE_APPLICATION_ID": application_id,
-        "VONAGE_SESSION_ID": session_id,
-    }.items() if not v]
+    missing: list[str] = []
+    if not application_id:
+        missing.append("VONAGE_APPLICATION_ID")
+    if not session_id:
+        missing.append("VONAGE_SESSION_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
