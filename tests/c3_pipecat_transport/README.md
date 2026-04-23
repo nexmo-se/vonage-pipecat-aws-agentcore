@@ -27,10 +27,13 @@ docker compose run --rm --build c3-pipecat-transport
 ```bash
 cd tests/c3_pipecat_transport
 
-uv venv
-uv pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# or with uv: uv venv && uv pip install -r requirements.txt
 
 uv run python echo_bot.py
+# or without uv: source .venv/bin/activate && python3 echo_bot.py
 ```
 
 ---
@@ -54,6 +57,7 @@ Browser mic → Vonage WebRTC → [Pipecat] → STT → passthrough → TTS → 
 ```
 
 The pipeline uses:
+
 - `VonageTransport` — receives audio frames from the Vonage session
 - `DeepgramSTTService` (or built-in Whisper) — speech-to-text
 - `EchoProcessor` — passes transcript straight back
@@ -66,8 +70,8 @@ The pipeline uses:
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `OSError: libvideo_connector.so not found` | Must run on Linux — use Docker on macOS |
-| No audio echo | Ensure a browser tab is joined and microphone is active |
-| `ModuleNotFoundError: pipecat` | Run `uv pip install -r requirements.txt` |
+| Error                                      | Fix                                                     |
+| ------------------------------------------ | ------------------------------------------------------- |
+| `OSError: libvideo_connector.so not found` | Must run on Linux — use Docker on macOS                 |
+| No audio echo                              | Ensure a browser tab is joined and microphone is active |
+| `ModuleNotFoundError: pipecat`             | Run `uv pip install -r requirements.txt`                |

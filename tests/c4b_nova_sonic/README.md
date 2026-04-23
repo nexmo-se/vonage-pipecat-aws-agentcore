@@ -22,8 +22,10 @@ This validates the Nova Sonic ↔ Pipecat integration before adding the Vonage t
 ```bash
 cd tests/c4b_nova_sonic
 
-uv venv
-uv pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# or with uv: uv venv && uv pip install -r requirements.txt
 ```
 
 ---
@@ -32,6 +34,7 @@ uv pip install -r requirements.txt
 
 ```bash
 uv run python test_nova_sonic.py
+# or without uv: source .venv/bin/activate && python3 test_nova_sonic.py
 ```
 
 ### Expected output
@@ -51,19 +54,19 @@ The script writes `response_output.wav` to the current directory. Play it to ver
 
 ## What it tests
 
-| Step | Description |
-|---|---|
-| Bedrock session | Opens a bidirectional streaming session with Nova Sonic |
-| Audio input | Sends a short WAV file as the user's speech input |
-| Audio output | Receives synthesised speech from Nova Sonic |
+| Step             | Description                                                   |
+| ---------------- | ------------------------------------------------------------- |
+| Bedrock session  | Opens a bidirectional streaming session with Nova Sonic       |
+| Audio input      | Sends a short WAV file as the user's speech input             |
+| Audio output     | Receives synthesised speech from Nova Sonic                   |
 | Pipecat pipeline | Wires input → Nova Sonic → output through Pipecat frame types |
 
 ---
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `AccessDeniedException` | Enable `amazon.nova-sonic-v1:0` model access in the Bedrock console |
-| `ffmpeg not found` | Install ffmpeg: `brew install ffmpeg` (macOS) or `apt install ffmpeg` (Linux) |
-| Empty output file | Nova Sonic may have rejected the audio format — ensure input is 16 kHz mono WAV |
+| Error                   | Fix                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `AccessDeniedException` | Enable `amazon.nova-sonic-v1:0` model access in the Bedrock console             |
+| `ffmpeg not found`      | Install ffmpeg: `brew install ffmpeg` (macOS) or `apt install ffmpeg` (Linux)   |
+| Empty output file       | Nova Sonic may have rejected the audio format — ensure input is 16 kHz mono WAV |

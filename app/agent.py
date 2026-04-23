@@ -22,6 +22,11 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = structlog.get_logger(__name__)
+PLACEHOLDER_VALUES = {
+    "your-aws-access-key-id",
+    "your-aws-secret-access-key",
+    "your-aws-session-token",
+}
 
 
 class VonagePipecatAgent:
@@ -83,6 +88,13 @@ class VonagePipecatAgent:
         aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
         aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 
+        has_explicit_env_creds = (
+            aws_access_key
+            and aws_secret_key
+            and aws_access_key not in PLACEHOLDER_VALUES
+            and aws_secret_key not in PLACEHOLDER_VALUES
+        )
+
         # Resolve private key path relative to repo root
         pk_file = Path(private_key_path)
         if not pk_file.is_absolute():
@@ -108,23 +120,28 @@ class VonagePipecatAgent:
             params=VonageTransport.InputParams(audio_enabled=True),
         )
 
-        nova_sonic = NovaSonicService(
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            aws_region=aws_region,
-            model_id=model_id,
-            system_prompt=(
+        nova_sonic_kwargs = {
+            "aws_region": aws_region,
+            "model_id": model_id,
+            "system_prompt": (
                 "You are a friendly, concise AI voice assistant. "
                 "Keep responses brief and conversational."
             ),
-        )
+        }
+        agentcore_kwargs = {
+            "agent_arn": agent_arn,
+            "aws_region": aws_region,
+        }
 
-        agentcore = AgentCoreService(
-            agent_arn=agent_arn,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            aws_region=aws_region,
-        )
+        if has_explicit_env_creds:
+            nova_sonic_kwargs["aws_access_key_id"] = aws_access_key
+            nova_sonic_kwargs["aws_secret_access_key"] = aws_secret_key
+            agentcore_kwargs["aws_access_key_id"] = aws_access_key
+            agentcore_kwargs["aws_secret_access_key"] = aws_secret_key
+
+        nova_sonic = NovaSonicService(**nova_sonic_kwargs)
+
+        agentcore = AgentCoreService(**agentcore_kwargs)
 
         pipeline = Pipeline([
             transport.input(),   # Audio in from Vonage session

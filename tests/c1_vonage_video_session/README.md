@@ -26,8 +26,10 @@ cp .env.example .env
 cd tests/c1_vonage_video_session
 
 # Create virtual environment and install dependencies
-uv venv
-uv pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# or with uv: uv venv && uv pip install -r requirements.txt
 ```
 
 ---
@@ -36,6 +38,7 @@ uv pip install -r requirements.txt
 
 ```bash
 uv run python test_session.py
+# or without uv: source .venv/bin/activate && python3 test_session.py
 ```
 
 ### Expected output
@@ -69,8 +72,8 @@ Copy the `VONAGE_SESSION_ID` value printed above into your root `.env` file — 
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `Authentication failed` | Check `VONAGE_APPLICATION_ID` and that `private.key` path is correct |
+| Error                       | Fix                                                                           |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `Authentication failed`     | Check `VONAGE_APPLICATION_ID` and that `private.key` path is correct          |
 | `vonage.errors.ClientError` | Ensure your application has **Video API** capability enabled in the dashboard |
-| `ModuleNotFoundError` | Run `uv pip install -r requirements.txt` inside the virtual environment |
+| `ModuleNotFoundError`       | Run `uv pip install -r requirements.txt` inside the virtual environment       |

@@ -66,13 +66,13 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## API
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `GET /` | HTTP | Health check — returns `{"status": "ok"}` |
-| `GET /status` | HTTP | Agent status (connected session, pipeline state) |
-| `POST /join` | HTTP | Instruct agent to join a Vonage session |
-| `POST /leave` | HTTP | Instruct agent to leave the current session |
-| `WS /ws` | WebSocket | Real-time events (participant joined/left, transcript) |
+| Endpoint      | Method    | Description                                            |
+| ------------- | --------- | ------------------------------------------------------ |
+| `GET /`       | HTTP      | Health check — returns `{"status": "ok"}`              |
+| `GET /status` | HTTP      | Agent status (connected session, pipeline state)       |
+| `POST /join`  | HTTP      | Instruct agent to join a Vonage session                |
+| `POST /leave` | HTTP      | Instruct agent to leave the current session            |
+| `WS /ws`      | WebSocket | Real-time events (participant joined/left, transcript) |
 
 ---
 
@@ -80,14 +80,15 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000
 
 All variables are loaded from the root `.env` file (see `.env.example`):
 
-| Variable | Description |
-|---|---|
-| `VONAGE_APPLICATION_ID` | Vonage Video API application ID |
-| `VONAGE_PRIVATE_KEY` | Path to Vonage private key file |
-| `VONAGE_SESSION_ID` | Vonage Video session to join on startup |
-| `AWS_ACCESS_KEY_ID` | AWS access key |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
-| `AWS_REGION` | AWS region (default: `us-east-1`) |
-| `BEDROCK_MODEL_ID` | Nova Sonic model ID (default: `amazon.nova-sonic-v1:0`) |
-| `AGENTCORE_AGENT_ARN` | ARN of deployed AgentCore agent |
-| `PORT` | FastAPI port (default: `8000`) |
+| Variable                | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| `VONAGE_APPLICATION_ID` | Vonage Video API application ID                         |
+| `VONAGE_PRIVATE_KEY`    | Path to Vonage private key file                         |
+| `VONAGE_SESSION_ID`     | Vonage Video session to join on startup                 |
+| `AWS_PROFILE`           | AWS CLI profile name (recommended, e.g. `vonage-dev`)   |
+| `AWS_ACCESS_KEY_ID`     | AWS access key (optional fallback if not using profile) |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key (optional fallback if not using profile) |
+| `AWS_REGION`            | AWS region (default: `us-east-1`)                       |
+| `BEDROCK_MODEL_ID`      | Nova Sonic model ID (default: `amazon.nova-sonic-v1:0`) |
+| `AGENTCORE_AGENT_ARN`   | ARN of deployed AgentCore agent                         |
+| `PORT`                  | FastAPI port (default: `8000`)                          |

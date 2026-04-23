@@ -47,7 +47,7 @@ async def main() -> None:
         from vonage_video_connector import VideoConnector
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
-        print("  Run: uv pip install -r requirements.txt")
+        print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
     client = Vonage(

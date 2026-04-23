@@ -27,43 +27,44 @@ TEST_PROMPT = "Say hello in exactly one sentence."
 def main() -> None:
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+    aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
+    aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
 
-    # ── Validate env vars ─────────────────────────────────────────
-    missing: list[str] = []
-    if not aws_access_key:
-        missing.append("AWS_ACCESS_KEY_ID")
-    if not aws_secret_key:
-        missing.append("AWS_SECRET_ACCESS_KEY")
-    if missing:
-        print(f"ERROR: Missing env vars: {', '.join(missing)}")
-        sys.exit(1)
-
-    print(f"✓ AWS credentials found (region: {aws_region})")
+    # ── Resolve credential source ─────────────────────────────────
+    has_explicit_env_creds = bool(aws_access_key and aws_secret_key)
+    if aws_profile:
+        print(f"✓ Using AWS profile: {aws_profile} (region: {aws_region})")
+    elif has_explicit_env_creds:
+        print(f"✓ Using AWS key/secret from env (region: {aws_region})")
+    else:
+        print(f"✓ Using boto3 default credential chain (region: {aws_region})")
 
     # ── Initialise Bedrock client ─────────────────────────────────
     try:
         import boto3
-        from botocore.exceptions import ClientError, NoCredentialsError
+        from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
-        print("  Run: uv pip install -r requirements.txt")
+        print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
     try:
-        bedrock = boto3.client(
-            "bedrock",
-            region_name=aws_region,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-        )
-        bedrock_runtime = boto3.client(
-            "bedrock-runtime",
-            region_name=aws_region,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-        )
-    except NoCredentialsError:
+        if aws_profile:
+            session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
+        elif has_explicit_env_creds:
+            session = boto3.Session(
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                aws_session_token=aws_session_token or None,
+                region_name=aws_region,
+            )
+        else:
+            session = boto3.Session(region_name=aws_region)
+
+        bedrock = session.client("bedrock")
+        bedrock_runtime = session.client("bedrock-runtime")
+    except (NoCredentialsError, ProfileNotFound):
         print("ERROR: AWS credentials are invalid or missing")
         sys.exit(1)
 

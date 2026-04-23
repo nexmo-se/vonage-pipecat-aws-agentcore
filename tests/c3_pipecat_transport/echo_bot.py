@@ -54,7 +54,7 @@ async def run_echo_bot() -> None:
         from pipecat.services.echo import EchoService
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
-        print("  Run: uv pip install -r requirements.txt")
+        print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
     # ── Generate publisher token ──────────────────────────────────

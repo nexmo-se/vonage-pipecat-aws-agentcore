@@ -42,16 +42,16 @@ async def run_nova_sonic_pipeline() -> None:
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
+    aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
     model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-sonic-v1:0").strip()
 
-    missing: list[str] = []
-    if not aws_access_key:
-        missing.append("AWS_ACCESS_KEY_ID")
-    if not aws_secret_key:
-        missing.append("AWS_SECRET_ACCESS_KEY")
-    if missing:
-        print(f"ERROR: Missing env vars: {', '.join(missing)}")
-        sys.exit(1)
+    has_explicit_env_creds = bool(aws_access_key and aws_secret_key)
+    if aws_profile:
+        print(f"✓ Using AWS profile: {aws_profile} (region: {aws_region})")
+    elif has_explicit_env_creds:
+        print(f"✓ Using AWS key/secret from env (region: {aws_region})")
+    else:
+        print(f"✓ Using boto3 default credential chain (region: {aws_region})")
 
     # ── Imports ───────────────────────────────────────────────────
     try:
@@ -65,7 +65,7 @@ async def run_nova_sonic_pipeline() -> None:
         from pipecat.transports.local.audio import LocalAudioParams
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
-        print("  Run: uv pip install -r requirements.txt")
+        print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
     # ── Generate silent test-input WAV ────────────────────────────
@@ -75,16 +75,19 @@ async def run_nova_sonic_pipeline() -> None:
         generate_silence_wav(input_wav, DURATION_SECONDS, SAMPLE_RATE)
 
     # ── Build pipeline ────────────────────────────────────────────
-    nova_sonic = NovaSonicService(
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        aws_region=aws_region,
-        model_id=model_id,
-        system_prompt=(
+    nova_sonic_kwargs = {
+        "aws_region": aws_region,
+        "model_id": model_id,
+        "system_prompt": (
             "You are a helpful voice assistant. "
             "Respond warmly in one or two short sentences."
         ),
-    )
+    }
+    if has_explicit_env_creds:
+        nova_sonic_kwargs["aws_access_key_id"] = aws_access_key
+        nova_sonic_kwargs["aws_secret_access_key"] = aws_secret_key
+
+    nova_sonic = NovaSonicService(**nova_sonic_kwargs)
     print("✓ Nova Sonic pipeline initialised")
 
     transport = LocalAudioTransport(

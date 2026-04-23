@@ -1,3 +1,9 @@
+# Local Development folder with notes and credentials. This should be ignored to prevent accidental commits of sensitive information.
+/dev
+
+# ignore ./test/ directory, which contains test files that are not meant to be distributed
+test/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -212,3 +218,4 @@ private.key
 
 # AWS Bedrock AgentCore config
 .bedrock_agentcore.yaml
+.bedrock_agentcore/

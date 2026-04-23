@@ -26,10 +26,13 @@ docker compose run --rm --build c2-video-connector
 ```bash
 cd tests/c2_video_connector_sdk
 
-uv venv
-uv pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# or with uv: uv venv && uv pip install -r requirements.txt
 
 uv run python test_connector.py
+# or without uv: source .venv/bin/activate && python3 test_connector.py
 ```
 
 ---
@@ -61,8 +64,8 @@ While the script is running you should also see a new participant appear in the 
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `OSError: libvideo_connector.so not found` | Must run on Linux — use Docker on macOS |
-| `Connection refused` | Check `VONAGE_SESSION_ID` is correct and the session exists |
-| `Unauthorized` | Verify `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY` |
+| Error                                      | Fix                                                         |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| `OSError: libvideo_connector.so not found` | Must run on Linux — use Docker on macOS                     |
+| `Connection refused`                       | Check `VONAGE_SESSION_ID` is correct and the session exists |
+| `Unauthorized`                             | Verify `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY`     |
