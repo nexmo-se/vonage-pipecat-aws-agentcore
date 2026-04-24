@@ -1,26 +1,70 @@
 # vonage-pipecat-aws-agentcore
 
-Real-time AI voice and video agents using **Vonage Video Connector Pipecat Integration** and **AWS Bedrock AgentCore Runtime**.
+Real-time AI voice and video agents using **Vonage Video**, **Pipecat**, **Amazon Nova Sonic**, and **Amazon Bedrock AgentCore Runtime**.
 
 ---
 
 ## Overview
 
-This project shows how to build production-ready, real-time AI voice/video agents by wiring together:
+This repository is an opinionated sample app and blog companion that combines:
+
+- **Amazon Bedrock AgentCore Runtime** as the managed runtime that hosts the agent logic
+- **Amazon Nova Sonic** as the low-latency speech-to-speech model inside the Pipecat pipeline
+- **Vonage Video API + Video Connector transport** as the real-time session layer that connects browser participants to the agent
+- **Pipecat** as the orchestration layer that moves media between the transport and the model
+
+Unlike direct client-to-agent transport examples, this sample uses **Vonage Video as the live session layer**. Browser users join a Vonage session, and the AI agent joins that same session through the **Vonage Video Connector Pipecat transport**.
+
+That makes the architecture split explicit:
+
+- **AWS AgentCore** explains where the agent runs
+- **Nova Sonic** explains how the agent speaks and listens
+- **Vonage Video** explains how the agent joins a live call
+
+This project shows how to wire those pieces together into a working sample.
+
+Core building blocks:
 
 | Component                      | Role                                         |
 | ------------------------------ | -------------------------------------------- |
-| **Vonage Video API**           | WebRTC session management and media routing  |
-| **Vonage Video Connector SDK** | Server-side WebRTC participant (Linux)       |
-| **Pipecat AI**                 | Real-time audio/video pipeline orchestration |
-| **AWS Nova Sonic**             | Speech-to-speech model on AWS Bedrock        |
-| **AWS Bedrock AgentCore**      | Managed runtime for scalable AI agents       |
+| **Vonage Video API**           | Browser session management and media routing |
+| **Vonage Video Connector SDK** | Server-side session participant for Pipecat  |
+| **Pipecat AI**                 | Real-time media and model orchestration      |
+| **Amazon Nova Sonic**          | Low-latency speech-to-speech intelligence    |
+| **Amazon Bedrock AgentCore**   | Managed runtime for deployable agent logic   |
+
+Transport choice for this repo:
+
+- This sample uses the **Vonage Video Connector Pipecat transport** path.
+- That means the required native media layer is the **Vonage Video Linux SDK / Video Connector SDK**.
+- The **Vonage Audio Connector SDK** is **not** required here.
+- The Audio Connector SDK applies to the separate **serializer / WebSocket** integration path, planned as **Phase 2 (Serializer/Voice)**.
+
+## Delivery Phases
+
+This repository is being delivered in phases to keep the POC fast while preserving the broader product request.
+
+- **Phase 1 (current): Transport/Video**
+  Vonage Video API + Video Connector transport, Pipecat transport pipeline, Amazon Nova Sonic integration, and AWS Bedrock AgentCore runtime deploy/invoke.
+- **Phase 2 (planned): Serializer/Voice**
+  Vonage Voice telephony use case path, Pipecat serializer/WebSocket integration, and architecture guidance for when serializer is preferred over transport.
+
+## Positioning
+
+Use this repository as both:
+
+- a **sample app** for validating each layer independently before running the full integrated agent
+- a **reference implementation** for a blog post that explains how Vonage Video, Pipecat, Nova Sonic, and AgentCore fit together
+
+The validation flow in `tests/` intentionally decomposes the stack so you can prove each dependency separately before combining them in `app/`.
 
 ---
 
 ## Architecture
 
-```
+High-level runtime topology:
+
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                  Browser / Mobile Client                      │
 │              (Vonage Video Web SDK / OpenTok.js)              │
@@ -29,32 +73,39 @@ This project shows how to build production-ready, real-time AI voice/video agent
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │              Vonage Video API Platform                        │
-│         (Session Management · Media Routing · TURN)          │
+│         (Session Management · Media Routing)                 │
 └───────────────────────────┬──────────────────────────────────┘
-                            │  WebRTC (Video Connector SDK)
+                            │  Session join via Video Connector transport
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
-│           Python AI Agent  (Linux · Docker)                  │
+│         AI Agent Runtime (Pipecat on AgentCore)              │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                 Pipecat Pipeline                     │    │
 │  │                                                      │    │
 │  │  ┌───────────────┐   ┌──────────────┐               │    │
 │  │  │    Vonage     │   │  AWS Bedrock │               │    │
-│  │  │   Transport   │──▶│  Nova Sonic  │               │    │
-│  │  │  (WebRTC I/O) │   │  (STT + TTS) │               │    │
+│  │  │  Transport      │◀─▶│  Nova Sonic  │               │    │
+│  │  │ (session I/O)   │   │ (speech I/O) │               │    │
 │  │  └───────────────┘   └──────┬───────┘               │    │
-│  │                             │ text                  │    │
-│  │                      ┌──────▼───────┐               │    │
-│  │                      │  AgentCore   │               │    │
-│  │                      │   Runtime    │               │    │
-│  │                      │ (LLM logic)  │               │    │
-│  │                      └──────────────┘               │    │
+│  │                             │                       │    │
+│  │                      ┌──────▼────────┐              │    │
+│  │                      │ Agent Logic    │              │    │
+│  │                      │ on AgentCore   │              │    │
+│  │                      └───────────────┘              │    │
 │  └─────────────────────────────────────────────────────┘    │
-│                                                              │
-│            FastAPI WebSocket  (management API)               │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+What is happening in this sample:
+
+1. A browser joins a **Vonage Video** session.
+2. The AI agent joins that same session through the **Vonage Video Connector Pipecat transport**.
+3. **Pipecat** orchestrates the real-time conversation loop.
+4. **Amazon Nova Sonic** handles low-latency speech input/output.
+5. **Amazon Bedrock AgentCore Runtime** hosts the deployable agent logic used by the full application and C5 runtime validation.
+
+This is different from direct WebSocket or direct WebRTC examples where the client connects straight to the agent runtime. In this repository, **Vonage is the media/session intermediary**, which is the important architectural distinction.
 
 ---
 
@@ -149,7 +200,7 @@ See [app/README.md](app/README.md) for full instructions.
 
 ## Repository Layout
 
-```
+```text
 vonage-pipecat-aws-agentcore/
 ├── .env.example                  # Template for all credentials
 ├── docker-compose.yml            # Linux container services (macOS-friendly)
@@ -164,6 +215,19 @@ vonage-pipecat-aws-agentcore/
 ├── blog/                         # Blog post + images
 └── docs/                         # Architecture diagrams + notes
 ```
+
+## Official Vonage References
+
+This project intentionally cites Vonage-authored documentation as the primary source for API and SDK behavior.
+
+- [Vonage Video API overview](https://developer.vonage.com/en/video/overview)
+- [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
+- [Vonage Python SDK repository](https://github.com/Vonage/vonage-python-sdk)
+- [Vonage Python SDK Video API examples](https://github.com/Vonage/vonage-python-sdk/blob/main/video/README.md)
+- [Vonage Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
+- [Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
+- [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
+- [Vonage Voice API overview (Phase 2 Serializer/Voice scope)](https://developer.vonage.com/en/voice/overview)
 
 ---
 

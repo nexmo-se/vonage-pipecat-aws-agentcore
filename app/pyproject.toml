@@ -2,12 +2,12 @@
 name = "vonage-pipecat-aws-agentcore-app"
 version = "0.1.0"
 description = "Real-time AI voice/video agent — Vonage + Pipecat + AWS Nova Sonic + AgentCore"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 
 dependencies = [
     # Vonage Video API + Video Connector
     "vonage>=4.0.0",
-    "vonage-video-connector>=1.0.0",
+    "vonage-video-connector>=1.0.0; sys_platform == 'linux'",
 
     # Pipecat AI pipeline framework with AWS + WebRTC extras
     "pipecat-ai[aws,silero,webrtc]>=0.0.50",

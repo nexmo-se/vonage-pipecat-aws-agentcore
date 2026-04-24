@@ -219,3 +219,12 @@ private.key
 # AWS Bedrock AgentCore config
 .bedrock_agentcore.yaml
 .bedrock_agentcore/
+
+# Local runtime artifacts from sample/test runs
+*.wav
+*.webm
+*.mp4
+*.pid
+
+# macOS finder metadata
+.DS_Store

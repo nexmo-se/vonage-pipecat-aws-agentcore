@@ -4,7 +4,7 @@ agent.py — Pipecat pipeline: Vonage ↔ Nova Sonic ↔ AgentCore
 
 This module owns the long-running Pipecat pipeline that:
   1. Joins the Vonage Video session as a WebRTC participant
-  2. Receives audio from browser participants via VonageTransport
+    2. Receives audio from browser participants via the official Vonage Pipecat transport
   3. Processes speech through AWS Nova Sonic (STT + LLM + TTS)
   4. Sends synthesised speech back into the session
 """
@@ -69,13 +69,16 @@ class VonagePipecatAgent:
     async def _run_pipeline(self) -> None:
         try:
             from vonage import Auth, Vonage
+            from pipecat.audio.vad.silero import SileroVADAnalyzer
             from pipecat.pipeline.pipeline import Pipeline
             from pipecat.pipeline.runner import PipelineRunner
             from pipecat.pipeline.task import PipelineParams, PipelineTask
-            from pipecat.processors.frameworks.vonage import VonageTransport
-            from pipecat.audio.vad.silero import SileroVADAnalyzer
             from pipecat.services.aws.nova_sonic import NovaSonicService
             from pipecat.services.aws.agentcore import AgentCoreService
+            from pipecat.transports.vonage.video_connector import (
+                VonageVideoConnectorTransport,
+                VonageVideoConnectorTransportParams,
+            )
         except ImportError as exc:
             logger.error("Missing dependency", error=str(exc))
             return
@@ -112,12 +115,22 @@ class VonagePipecatAgent:
         logger.info("Publisher token generated", session_id=self.session_id)
 
         # Build pipeline components
-        transport = VonageTransport(
+        transport = VonageVideoConnectorTransport(
+            application_id=application_id,
             session_id=self.session_id,
             token=token,
-            application_id=application_id,
-            vad_analyzer=SileroVADAnalyzer(),
-            params=VonageTransport.InputParams(audio_enabled=True),
+            params=VonageVideoConnectorTransportParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                publisher_name="Vonage AgentCore Assistant",
+                audio_in_sample_rate=16000,
+                audio_out_sample_rate=24000,
+                vad_analyzer=SileroVADAnalyzer(),
+                audio_in_auto_subscribe=True,
+                video_in_auto_subscribe=False,
+                video_connector_log_level="INFO",
+                clear_buffers_on_interruption=True,
+            ),
         )
 
         nova_sonic_kwargs = {
@@ -156,14 +169,35 @@ class VonagePipecatAgent:
             params=PipelineParams(allow_interruptions=True),
         )
 
-        @transport.event_handler("on_participant_joined")
-        async def on_joined(transport, participant):
-            logger.info("Participant joined", participant_id=participant.get("id"))
+        @transport.event_handler("on_joined")
+        async def on_joined(transport, data):
+            logger.info("Joined session", session_id=data.get("sessionId"))
             self.connected = True
 
+        @transport.event_handler("on_participant_joined")
+        async def on_participant_joined(transport, data):
+            logger.info(
+                "Participant joined",
+                stream_id=data.get("streamId"),
+                connection_data=data.get("connectionData"),
+            )
+
         @transport.event_handler("on_participant_left")
-        async def on_left(transport, participant, reason):
-            logger.info("Participant left", participant_id=participant.get("id"))
+        async def on_participant_left(transport, data):
+            logger.info(
+                "Participant left",
+                stream_id=data.get("streamId"),
+                connection_data=data.get("connectionData"),
+            )
+
+        @transport.event_handler("on_left")
+        async def on_left(transport, data):
+            logger.info("Left session", session_id=data.get("sessionId"))
+            self.connected = False
+
+        @transport.event_handler("on_error")
+        async def on_error(transport, error):
+            logger.error("Transport error", error=error)
 
         logger.info("Pipeline started", session_id=self.session_id)
         self._runner = PipelineRunner()

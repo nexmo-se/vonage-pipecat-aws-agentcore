@@ -17,72 +17,137 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = REPO_ROOT / ".env"
+SESSION_PLACEHOLDERS = {
+    "",
+    "your-vonage-session-id",
+    "<your-vonage-session-id>",
+}
+
 # Load .env from the repo root (two levels up from this file)
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+load_dotenv(ENV_FILE)
 
 
-def main() -> None:
+def resolve_private_key_path(private_key_path: str) -> Path:
+    private_key_file = Path(private_key_path).expanduser()
+    if not private_key_file.is_absolute():
+        private_key_file = REPO_ROOT / private_key_path
+    return private_key_file
+
+
+def load_vonage_bootstrap_config() -> tuple[str, Path, str]:
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
     session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
 
-    # ── Validate required env vars ────────────────────────────────
     if not application_id:
         print("ERROR: VONAGE_APPLICATION_ID is not set in .env")
         sys.exit(1)
 
-    private_key_file = Path(private_key_path)
-    if not private_key_file.is_absolute():
-        # Resolve relative to repo root
-        private_key_file = Path(__file__).resolve().parents[2] / private_key_path
+    private_key_file = resolve_private_key_path(private_key_path)
     if not private_key_file.exists():
         print(f"ERROR: Private key file not found: {private_key_file}")
         print("  Download your application's private.key from the Vonage Dashboard")
         sys.exit(1)
 
-    # ── Initialise Vonage client ──────────────────────────────────
+    return application_id, private_key_file, session_id
+
+
+def is_missing_session_id(session_id: str) -> bool:
+    return session_id.strip().lower() in SESSION_PLACEHOLDERS
+
+
+def persist_session_id_to_env(session_id: str) -> None:
+    if not ENV_FILE.exists():
+        return
+
+    lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    replaced = False
+    for idx, line in enumerate(lines):
+        if line.strip().startswith("VONAGE_SESSION_ID="):
+            lines[idx] = f"VONAGE_SESSION_ID={session_id}"
+            replaced = True
+            break
+
+    if not replaced:
+        lines.append(f"VONAGE_SESSION_ID={session_id}")
+
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"✓ Saved VONAGE_SESSION_ID to {ENV_FILE}")
+
+
+def create_vonage_client(application_id: str, private_key_file: Path):
     try:
         from vonage import Auth, Vonage
-        from vonage_video import CreateSessionRequest
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
         print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
-    client = Vonage(
+    return Vonage(
         Auth(
             application_id=application_id,
             private_key=str(private_key_file),
         )
     )
 
-    # ── Create or reuse session ───────────────────────────────────
-    if not session_id:
-        print("Creating new Vonage Video session …")
-        session = client.video.create_session(
-            CreateSessionRequest(media_mode="routed")
-        )
-        session_id = session.session_id
-        print(f"✓ Created session: {session_id}")
-        print(f"  ➜ Add VONAGE_SESSION_ID={session_id} to your .env file\n")
-    else:
+
+def get_or_create_session_id(client, session_id: str) -> str:
+    try:
+        from vonage_video import SessionOptions
+    except ImportError as exc:
+        print(f"ERROR: Missing dependency — {exc}")
+        print("  Run: pip install -r requirements.txt")
+        sys.exit(1)
+
+    if not is_missing_session_id(session_id):
         print(f"✓ Using existing session: {session_id}")
+        return session_id
 
-    # ── Generate a client token ───────────────────────────────────
+    print("Creating new Vonage Video session …")
+    session = client.video.create_session(SessionOptions(media_mode="routed"))
+    session_id = session.session_id
+    print(f"✓ Created session: {session_id}")
+    persist_session_id_to_env(session_id)
+    print(f"  ➜ Added VONAGE_SESSION_ID={session_id} to your .env file\n")
+    return session_id
+
+
+def generate_publisher_token(client, session_id: str, expire_time: int = 86400) -> str:
+    try:
+        from vonage_video import TokenOptions
+    except ImportError as exc:
+        print(f"ERROR: Missing dependency — {exc}")
+        print("  Run: pip install -r requirements.txt")
+        sys.exit(1)
+
     token = client.video.generate_client_token(
-        session_id=session_id,
-        role="publisher",
-        expire_time=86400,  # 24 hours
+        TokenOptions(
+            session_id=session_id,
+            role="publisher",
+        )
     )
-    print("✓ Generated client token (publisher, 24 h)")
+    print(f"✓ Generated client token (publisher, {expire_time // 3600} h)")
+    return token
 
-    # ── Print browser demo URL ────────────────────────────────────
-    demo_url = (
+
+def build_playground_url(application_id: str, session_id: str, token: str) -> str:
+    return (
         "https://tokbox.com/developer/tools/playground/"
         f"?apiKey={application_id}"
         f"&sessionId={session_id}"
         f"&token={token}"
     )
+
+
+def main() -> None:
+    application_id, private_key_file, session_id = load_vonage_bootstrap_config()
+    client = create_vonage_client(application_id, private_key_file)
+    session_id = get_or_create_session_id(client, session_id)
+    token = generate_publisher_token(client, session_id)
+    demo_url = build_playground_url(application_id, session_id, token)
+
     separator = "=" * 60
     print(f"\n{separator}")
     print("Browser Demo URL:")

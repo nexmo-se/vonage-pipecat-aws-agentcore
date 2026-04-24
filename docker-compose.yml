@@ -21,6 +21,11 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
+    stdin_open: false
+    tty: false
+    working_dir: /workspace/tests/c3_pipecat_transport
+    volumes:
+      - .:/workspace:ro
     profiles: [c3]
 
   # ─────────────────────────────────────────────────────────────────

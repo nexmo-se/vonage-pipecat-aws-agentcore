@@ -16,7 +16,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+def find_repo_root(start: Path) -> Path:
+    current = start.resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / ".env").exists():
+            return candidate
+    return start.resolve()  # .env not found; env vars come from docker-compose env_file
+
+
+REPO_ROOT = find_repo_root(Path(__file__).parent)
+load_dotenv(REPO_ROOT / ".env")
 
 
 async def main() -> None:
@@ -36,7 +46,7 @@ async def main() -> None:
 
     private_key_file = Path(private_key_path)
     if not private_key_file.is_absolute():
-        private_key_file = Path(__file__).resolve().parents[2] / private_key_path
+        private_key_file = REPO_ROOT / private_key_path
     if not private_key_file.exists():
         print(f"ERROR: Private key not found: {private_key_file}")
         sys.exit(1)

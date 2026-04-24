@@ -14,6 +14,7 @@ Conversational AI has moved from text chatbots to real-time voice agents that ca
 4. **AWS Bedrock AgentCore Runtime** — a managed runtime for deploying and scaling AI agents
 
 By the end you'll have a working agent that:
+
 - Joins a Vonage video session
 - Listens to participants in real time
 - Generates intelligent responses via AgentCore
@@ -23,7 +24,7 @@ By the end you'll have a working agent that:
 
 ## Architecture Overview
 
-```
+```text
 Browser (mic/speaker)
         │  WebRTC
         ▼
@@ -184,10 +185,27 @@ In this post we built a real-time AI voice agent that:
 ✅ Joins a Vonage WebRTC video session as a server-side participant  
 ✅ Processes speech with Amazon Nova Sonic (STT + LLM + TTS in one call)  
 ✅ Delegates reasoning to AWS Bedrock AgentCore Runtime  
-✅ Returns synthesised audio in near real time  
+✅ Returns synthesised audio in near real time
 
 The complete source code is available at [github.com/nexmo-se/vonage-pipecat-aws-agentcore](https://github.com/nexmo-se/vonage-pipecat-aws-agentcore).
 
 ---
 
-*Built with ❤️ by the Vonage API CSE team*
+## Official Vonage References
+
+For implementation details and product behavior, use Vonage-authored documentation as the primary source:
+
+- [Vonage Video API overview](https://developer.vonage.com/en/video/overview)
+- [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
+- [Vonage Python SDK repository](https://github.com/Vonage/vonage-python-sdk)
+- [Vonage Python SDK Video API examples](https://github.com/Vonage/vonage-python-sdk/blob/main/video/README.md)
+- [Vonage Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
+- [Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
+- [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
+- [Vonage Voice API overview](https://developer.vonage.com/en/voice/overview)
+
+---
+
+## Credits
+
+Built with care by the Vonage API CSE team.
