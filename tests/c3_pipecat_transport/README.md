@@ -10,10 +10,24 @@ Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage
 
 ## Prerequisites
 
-- Docker + Docker Compose (macOS) **or** Linux host with Python 3.11+
+- Docker + Docker Compose (macOS) **or** Linux host with Python 3.13+ on Linux AMD64/ARM64
 - Completed test **C1** — `VONAGE_SESSION_ID` must be set in `.env`
 - `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY` set in `.env`
 - A browser tab open on the Vonage playground URL from test C1 (to provide audio input)
+
+### SDK versions (latest baseline)
+
+This test tracks the latest stable SDK line and is currently validated with:
+
+- `pipecat-ai[silero,webrtc]>=1.0.0`
+- `vonage>=4.8.0`
+- `vonage-video-connector>=1.0.0`
+
+If you already created a virtualenv, refresh to the newest compatible packages before running:
+
+```bash
+pip install --upgrade -r requirements.txt
+```
 
 ---
 
@@ -69,12 +83,20 @@ Minimal official flow used by this test:
 Official best practices kept in this test:
 
 - `SileroVADAnalyzer()` enabled
+- Official Vonage token creation flow via `TokenOptions`
 - `audio_in_sample_rate=16000`
 - `audio_out_sample_rate=24000`
 - `audio_in_auto_subscribe=True`
 - `video_in_auto_subscribe=False`
 - `clear_buffers_on_interruption=True`
 - `video_connector_log_level="INFO"`
+
+## Official References
+
+- [Vonage Video Connector Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
+- [Vonage Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
+- [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
+- [Vonage Pipecat repository](https://github.com/Vonage/pipecat)
 
 > **Note:** This test intentionally does not use STT, TTS, or an LLM. Its only purpose is to prove that the Vonage transport can receive and return live audio frames inside a Pipecat pipeline.
 

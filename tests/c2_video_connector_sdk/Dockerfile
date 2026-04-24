@@ -3,6 +3,7 @@ FROM python:3.13-slim
 # Install system dependencies required by the Video Connector native library
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
+    libexpat1 \
     libpulse0 \
     alsa-utils \
     && rm -rf /var/lib/apt/lists/*

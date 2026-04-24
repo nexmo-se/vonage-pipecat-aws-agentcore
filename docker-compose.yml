@@ -9,6 +9,9 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
+    working_dir: /workspace/tests/c2_video_connector_sdk
+    volumes:
+      - .:/workspace:ro
     profiles: [c2]
 
   # ─────────────────────────────────────────────────────────────────

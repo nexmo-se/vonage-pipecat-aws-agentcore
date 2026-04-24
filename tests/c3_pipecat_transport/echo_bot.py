@@ -24,6 +24,9 @@ def find_repo_root(start: Path) -> Path:
     for candidate in (current, *current.parents):
         if (candidate / ".env").exists():
             return candidate
+    workspace_root = Path("/workspace")
+    if (workspace_root / ".env").exists():
+        return workspace_root
     return start.resolve()  # .env not found; env vars come from docker-compose env_file
 
 
@@ -56,6 +59,7 @@ async def run_echo_bot() -> None:
     # ── Imports ───────────────────────────────────────────────────
     try:
         from vonage import Auth, Vonage
+        from vonage_video import TokenOptions
         from pipecat.audio.vad.silero import SileroVADAnalyzer
         from pipecat.pipeline.pipeline import Pipeline
         from pipecat.pipeline.runner import PipelineRunner
@@ -78,10 +82,13 @@ async def run_echo_bot() -> None:
         )
     )
     token = client.video.generate_client_token(
-        session_id=session_id,
-        role="publisher",
-        expire_time=3600,
+        TokenOptions(
+            session_id=session_id,
+            role="publisher",
+        )
     )
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
     print(f"Initialising Vonage Pipecat transport for session {session_id} …")
 
     # ── Build Pipecat pipeline ────────────────────────────────────
