@@ -41,6 +41,56 @@ pip install --upgrade -r requirements.txt
 docker compose run --rm --build c3-pipecat-transport
 ```
 
+### End-to-end validation with Vonage Playground
+
+If you are validating C3 manually from a browser participant, use this flow:
+
+1. Set `VONAGE_SESSION_ID` in the root `.env` file (repo root) to the session you want to test.
+2. Start C3 and save logs to a file:
+
+```bash
+cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore
+mkdir -p logs
+VONAGE_VIDEO_CONNECTOR_LOG_LEVEL=DEBUG \
+VONAGE_DEBUG_EVENT_PAYLOADS=true \
+VONAGE_MONITOR_INTERVAL_SECONDS=5 \
+docker compose run --rm --build c3-pipecat-transport | tee logs/c3-pipecat-transport.log
+```
+
+3. In a second terminal, generate/open the browser demo URL from C1:
+
+```bash
+cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore/tests/c1_vonage_video_session
+source .venv/bin/activate
+python3 test_session.py
+```
+
+4. Open the printed Browser Demo URL (Vonage Playground).
+   If needed, you can also open the playground directly: https://tools.vonage.com/video/playground/
+5. Enable camera and microphone permissions in the browser.
+6. Click Publish.
+7. Wait 5-10 seconds while C3 processes media.
+8. Click Unpublish.
+9. Click Disconnect.
+
+After this sequence, stop C3 with `Ctrl+C` and inspect the saved log file.
+
+### Verify success from the saved log file
+
+Use the captured log file to confirm the participant lifecycle and monitoring counters:
+
+```bash
+cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore
+grep -E 'Connected to Vonage Video session|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|monitor: active_streams' logs/c3-pipecat-transport.log
+```
+
+Successful runs should show:
+
+- Session connected line
+- Participant joined/left lines
+- Client connected/disconnected lines
+- Monitor lines where counters increase and later return to zero after disconnect
+
 ## Setup (native Linux)
 
 ```bash
