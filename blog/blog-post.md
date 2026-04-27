@@ -96,27 +96,16 @@ Speak into your browser microphone. After a short pause you should hear your own
 
 ---
 
-## Step 4a — AWS Bedrock Credentials (Test C4a)
+## Step 4 — AWS Bedrock + Nova Sonic (Test C4)
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4_bedrock_nova_sonic
 uv venv && uv pip install -r requirements.txt
-uv run python test_bedrock.py
+uv run python test_bedrock.py           # Stage 1: Credential verification
+uv run python bedrock_echo_agent.py     # Stage 2: Bedrock + Vonage integration
 ```
 
-This test validates your AWS credentials and sends a short prompt to **Amazon Nova Lite** — a fast, lightweight text model. Nova Lite is used here as a low-cost sanity check before moving to Nova Sonic.
-
----
-
-## Step 4b — Amazon Nova Sonic (Test C4b)
-
-Nova Sonic is Amazon's speech-to-speech model. It accepts raw audio, reasons internally, and returns synthesised speech — removing the need for separate STT and TTS services.
-
-```bash
-cd tests/c4b_nova_sonic
-uv venv && uv pip install -r requirements.txt
-uv run python test_nova_sonic.py
-```
+This combined test validates your AWS credentials with **Amazon Nova Lite** (fast, lightweight text model for sanity check), then moves to **Nova Sonic** — Amazon's speech-to-speech model that accepts raw audio, reasons internally, and returns synthesised speech, removing the need for separate STT and TTS services.
 
 The test sends a short silent WAV and receives a response audio file. Play `response_output.wav` to verify Nova Sonic is working.
 

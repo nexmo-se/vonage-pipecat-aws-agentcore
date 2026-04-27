@@ -28,10 +28,10 @@ This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API 
 ### macOS (Docker)
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4_bedrock_nova_sonic
 
 # Build Dockerfile (includes git for Pipecat source install, Python 3.13, boto3, Vonage SDK)
-docker build -t c4a-bedrock .
+docker build -t c4-bedrock-nova-sonic .
 
 # Ensure root .env has AWS_PROFILE set
 # (or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY for explicit credentials)
@@ -40,7 +40,7 @@ docker build -t c4a-bedrock .
 ### Native Linux
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4_bedrock_nova_sonic
 
 python -m venv .venv
 source .venv/bin/activate
@@ -62,7 +62,7 @@ docker run --rm -e AWS_PROFILE=vonage-dev \
   -e AWS_REGION=us-east-1 \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
-  c4a-bedrock python test_bedrock.py
+  c4-bedrock-nova-sonic python test_bedrock.py
 
 # Native Linux
 source .venv/bin/activate
@@ -153,10 +153,10 @@ python bedrock_echo_agent.py
 Use this exact flow for reproducible results:
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4_bedrock_nova_sonic
 
 # 1) Build latest image
-docker build -t c4a-bedrock .
+docker build -t c4-bedrock-nova-sonic .
 
 # 2) Clear previous log
 rm -f c4a-bedrock-echo.log

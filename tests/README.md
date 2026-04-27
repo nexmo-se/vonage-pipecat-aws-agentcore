@@ -14,8 +14,7 @@ Run the folders in this order:
 1. `c1_vonage_video_session`
 2. `c2_video_connector_sdk`
 3. `c3_pipecat_transport`
-4. `c4a_aws_bedrock`
-5. `c4b_nova_sonic`
+4. `c4_bedrock_nova_sonic`
 6. `c5_agentcore`
 
 C1 is the bootstrap step for the Vonage side. It creates or confirms the session state that C2 and C3 need.
