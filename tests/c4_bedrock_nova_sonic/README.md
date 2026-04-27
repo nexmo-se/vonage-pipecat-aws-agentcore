@@ -1,4 +1,4 @@
-# C4a — AWS Bedrock + Vonage Pipecat Transport Integration
+# C4 — AWS Bedrock + Nova Sonic + Vonage Pipecat Transport Integration
 
 Two-stage test that validates AWS Bedrock integration with the Vonage Video transport (building on C3):
 
@@ -80,7 +80,7 @@ Sending test prompt: "Say hello in exactly one sentence."
 ✓ Response received:
   Hello! I'm Nova Lite, an AI assistant — how can I help you today?
 
-Test C4a PASSED ✓
+Test C4 PASSED ✓
 ```
 
 ### What It Tests
@@ -141,7 +141,7 @@ docker run --rm \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
-  c4a-bedrock python bedrock_echo_agent.py
+  c4-bedrock-nova-sonic python bedrock_echo_agent.py
 
 # Native Linux (assumes VONAGE_SESSION_ID is set in root .env)
 source .venv/bin/activate
@@ -159,7 +159,7 @@ cd tests/c4_bedrock_nova_sonic
 docker build -t c4-bedrock-nova-sonic .
 
 # 2) Clear previous log
-rm -f c4a-bedrock-echo.log
+rm -f c4-bedrock-nova-sonic-echo.log
 
 # 3) Start agent and capture output
 docker run --rm \
@@ -172,7 +172,7 @@ docker run --rm \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
   -v "$(pwd)/logs:/app/logs" \
-  c4a-bedrock python bedrock_echo_agent.py 2>&1 | tee c4a-bedrock-echo.log
+  c4-bedrock-nova-sonic python bedrock_echo_agent.py 2>&1 | tee c4-bedrock-nova-sonic-echo.log
 ```
 
 Then in Vonage Playground:
@@ -202,7 +202,7 @@ Press Ctrl+C to stop.
 
 Same workflow as C3, with LLM processing:
 
-1. **Start C4a agent** (Docker or native)
+1. **Start C4 agent** (Docker or native)
 2. **Join [Vonage Playground](https://tools.vonage.com/video/playground/)**
    - Use the same session ID from `.env`
    - Enable camera + microphone
@@ -217,10 +217,10 @@ Same workflow as C3, with LLM processing:
 
 ```bash
 # Check key markers from the latest run
-grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4a-bedrock-echo.log
+grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4-bedrock-nova-sonic-echo.log
 
 # If your log includes binary segments, use strings extraction first
-strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
+strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
 ```
 
 ### Success Checklist
@@ -233,7 +233,7 @@ strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic conte
 - [ ] Participant speaks → assistant audio returns (audio loop confirmed)
 - [ ] Client disconnects (logs: "Client disconnected")
 - [ ] Participant leaves (logs: "Participant left")
-- [ ] Agent stops cleanly (Ctrl+C → "Test C4a Bedrock integration complete ✓")
+- [ ] Agent stops cleanly (Ctrl+C → "Test C4 Bedrock integration complete ✓")
 
 ---
 

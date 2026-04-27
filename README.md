@@ -157,7 +157,7 @@ Work through the tests in order to validate each layer of the stack before wirin
 | C1  | [tests/c1_vonage_video_session](tests/c1_vonage_video_session/README.md) | Vonage Video session creation + browser client URL | Any            |
 | C2  | [tests/c2_video_connector_sdk](tests/c2_video_connector_sdk/README.md)   | Video Connector SDK joining as WebRTC participant  | Linux / Docker |
 | C3  | [tests/c3_pipecat_transport](tests/c3_pipecat_transport/README.md)       | Pipecat echo bot over Vonage transport             | Linux / Docker |
-| C4  | [tests/c4_bedrock_nova_sonic](tests/c4_bedrock_nova_sonic/README.md)     | AWS Bedrock + Nova Lite + Nova Sonic integration    | Any            |
+| C4  | [tests/c4_bedrock_nova_sonic](tests/c4_bedrock_nova_sonic/README.md)     | AWS Bedrock + Nova Lite + Nova Sonic integration   | Any            |
 | C5  | [tests/c5_agentcore](tests/c5_agentcore/README.md)                       | AgentCore Runtime deploy + invoke hello world      | Any            |
 
 ---
