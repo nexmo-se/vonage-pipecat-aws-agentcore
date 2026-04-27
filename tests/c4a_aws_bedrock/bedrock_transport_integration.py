@@ -23,7 +23,7 @@ class BedrockLLMIntegration:
 
     def __init__(
         self,
-        model_id: str = "amazon.nova-sonic-v1:0",
+        model_id: str = "amazon.nova-2-sonic-v1:0",
         region: str = "us-east-1",
         profile_name: Optional[str] = None,
         access_key_id: Optional[str] = None,

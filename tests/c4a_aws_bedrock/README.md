@@ -18,7 +18,7 @@ This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API 
 - Vonage Video API credentials (from C1) with active session ID
 - **Model Access Required:**
   - `amazon.nova-lite-v1:0` (for credential test in Stage 1)
-  - `amazon.nova-sonic-v1:0` (for echo agent in Stage 2)
+  - `amazon.nova-2-sonic-v1:0` (for echo agent in Stage 2)
   - Enable models in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) — us-east-1 recommended
 
 ---
@@ -120,13 +120,16 @@ VONAGE_SESSION_ID=<session-from-c1>
 # AWS Bedrock
 AWS_PROFILE=vonage-dev            # or use AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 AWS_REGION=us-east-1
-BEDROCK_MODEL_ID=amazon.nova-sonic-v1:0
+BEDROCK_MODEL_ID=amazon.nova-2-sonic-v1:0
+BEDROCK_INITIAL_USER_MESSAGE=Please greet the participant briefly and ask how you can help.
 
 # Transport tuning (optional, defaults align with C3 best practices)
 VONAGE_VIDEO_CONNECTOR_LOG_LEVEL=INFO
 VONAGE_MONITOR_ENABLED=true
 VONAGE_MONITOR_INTERVAL_SECONDS=15
 ```
+
+Set `BEDROCK_INITIAL_USER_MESSAGE=` (empty) to disable the initial greeting.
 
 ### Run Stage 2
 
@@ -145,18 +148,53 @@ source .venv/bin/activate
 python bedrock_echo_agent.py
 ```
 
+### Validated Run Flow (Recommended)
+
+Use this exact flow for reproducible results:
+
+```bash
+cd tests/c4a_aws_bedrock
+
+# 1) Build latest image
+docker build -t c4a-bedrock .
+
+# 2) Clear previous log
+rm -f c4a-bedrock-echo.log
+
+# 3) Start agent and capture output
+docker run --rm \
+  -e AWS_PROFILE=vonage-dev \
+  -e AWS_REGION=us-east-1 \
+  -e BEDROCK_MODEL_ID=amazon.nova-2-sonic-v1:0 \
+  -e VONAGE_MONITOR_ENABLED=true \
+  -e VONAGE_MONITOR_INTERVAL_SECONDS=10 \
+  -v ~/.aws:/root/.aws:ro \
+  -v "$(pwd)/../../.env:/workspace/.env:ro" \
+  -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
+  -v "$(pwd)/logs:/app/logs" \
+  c4a-bedrock python bedrock_echo_agent.py 2>&1 | tee c4a-bedrock-echo.log
+```
+
+Then in Vonage Playground:
+
+1. Join using the same session ID from `.env`
+2. Publish mic/audio
+3. Speak for 10-20 seconds
+4. Confirm you hear assistant audio
+5. Press Ctrl+C to stop the agent
+
 ### Expected Output
 
 ```
-Initializing Bedrock LLM (amazon.nova-sonic-v1:0) in us-east-1…
+Initializing Nova Sonic (amazon.nova-2-sonic-v1:0) in us-east-1…
 Initialising Vonage Pipecat transport for session 2_MX4zZjI4NTlhYy01OWU4LTQ2YjEtODFiOS1hZjE2NWFhZTVkNjN-…
 ✓ Connected to Vonage Video session 2_MX4zZjI4NTlhYy01OWU4LTQ2YjEtODFiOS1hZjE2NWFhZTVkNjN-
-✓ Bedrock LLM (amazon.nova-sonic-v1:0) ready for participant interactions
+✓ Nova Sonic (amazon.nova-2-sonic-v1:0) ready for participant interactions
 
-Pipecat pipeline with Bedrock LLM running — speak into your browser microphone
-  Audio received → LLM processes → echoed back as audio
+Pipecat pipeline with Nova Sonic running — speak into your browser microphone
+  Audio received → Nova Sonic processes → spoken response published back
   Transport config: log_level=INFO, audio_in=true, audio_out=true, …
-  LLM config: model=amazon.nova-sonic-v1:0, region=us-east-1
+  AI config: model=amazon.nova-2-sonic-v1:0, region=us-east-1
 Press Ctrl+C to stop.
 ```
 
@@ -178,27 +216,21 @@ Same workflow as C3, with LLM processing:
 ### Verify Success from Logs
 
 ```bash
-# Capture output to file
-docker run --rm … c4a-bedrock python bedrock_echo_agent.py 2>&1 | tee logs/c4a-bedrock-echo.log
+# Check key markers from the latest run
+grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4a-bedrock-echo.log
 
-# Then grep for success markers
-grep "Connected to Vonage Video session" logs/c4a-bedrock-echo.log
-grep "Bedrock LLM ready" logs/c4a-bedrock-echo.log
-grep "Participant joined" logs/c4a-bedrock-echo.log
-grep "Client connected" logs/c4a-bedrock-echo.log
-grep "monitor:" logs/c4a-bedrock-echo.log        # Check counters
-grep "Client disconnected" logs/c4a-bedrock-echo.log
-grep "Participant left" logs/c4a-bedrock-echo.log
+# If your log includes binary segments, use strings extraction first
+strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
 ```
 
 ### Success Checklist
 
 - [ ] Agent connects to Vonage session (logs: "Connected to Vonage Video session")
-- [ ] Bedrock LLM initialized (logs: "Bedrock LLM ready")
+- [ ] Nova Sonic initialized (logs: "Nova Sonic (...) ready")
 - [ ] Participant joins from Playground (logs: "Participant joined")
 - [ ] Client connects (logs: "Client connected")
 - [ ] Monitor shows active_streams > 0 (logs: "monitor: active_streams=1")
-- [ ] Participant speaks → LLM processes → echo returns (audio loop confirmed)
+- [ ] Participant speaks → assistant audio returns (audio loop confirmed)
 - [ ] Client disconnects (logs: "Client disconnected")
 - [ ] Participant leaves (logs: "Participant left")
 - [ ] Agent stops cleanly (Ctrl+C → "Test C4a Bedrock integration complete ✓")

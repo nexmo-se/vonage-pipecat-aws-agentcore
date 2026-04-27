@@ -39,7 +39,7 @@ except ImportError as e:
 
 aws_profile = os.getenv("AWS_PROFILE", "").strip()
 aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
-bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-sonic-v1:0").strip()
+bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
 
 # For validation test, use Nova Lite (text-only)
 # Stage 2 will use Nova Sonic (speech-to-speech) via bedrock_echo_agent.py
