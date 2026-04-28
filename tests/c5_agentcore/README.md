@@ -2,6 +2,33 @@
 
 Minimal steps to reproduce a working C5 run with a real deployed AgentCore runtime.
 
+## What is AWS Bedrock AgentCore?
+
+**Amazon Bedrock AgentCore** is a managed AWS service that provides a serverless runtime environment for deploying and invoking agent logic. It allows you to:
+
+- Package Python code as a deployable agent.
+- Deploy that code to AWS without managing servers or containers.
+- Invoke the deployed agent via API calls at runtime.
+
+In this project, AgentCore serves as an **optional bootstrap initialization layer**. At session start, if `AGENTCORE_AGENT_ARN` is set in `.env`, the app invokes AgentCore to retrieve a priming message (e.g., custom system instructions, persona, or dynamic context). This message is then injected into the Pipecat pipeline to customize the agent's behavior before real-time conversation begins.
+
+**Key benefit:** Decouples static agent logic (deployment-time) from real-time orchestration (runtime). You deploy your agent logic to a managed AWS runtime, and the FastAPI app simply calls it to bootstrap each session.
+
+## Bedrock vs AgentCore (Why Both?)
+
+These are different layers of the stack:
+
+- **Amazon Bedrock** is the model inference service (for example Nova Lite / Nova Sonic).
+- **Amazon Bedrock AgentCore** is the managed runtime for your deployable agent application logic.
+
+In this repository:
+
+1. C4 proves Bedrock model inference for live speech/text responses.
+2. C5 proves AgentCore runtime deployment and invocation.
+3. In the full app, AgentCore can optionally provide bootstrap instructions/persona, while Bedrock powers live conversational inference.
+
+Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
+
 ## Purpose
 
 This C5 folder validates end-to-end AgentCore runtime invocation.
@@ -10,6 +37,18 @@ This C5 folder validates end-to-end AgentCore runtime invocation.
 - `test_agentcore.py`: validation script that invokes the deployed runtime and verifies a response
 
 Keep both files in this folder so C5 remains self-contained (deploy artifact + test).
+
+## When Do You Need AgentCore?
+
+| Scenario                                                           | Use AgentCore? | Why                                                                                  |
+| ------------------------------------------------------------------ | -------------- | ------------------------------------------------------------------------------------ |
+| Simple echo/reflective agent with no custom logic                  | No             | Nova Sonic defaults are sufficient; skip for minimal latency.                        |
+| Custom persona, system instructions, or initialization             | Yes            | AgentCore bootstrap injects these at session start without adding real-time latency. |
+| Agent logic requires tools, memory retrieval, or stateful behavior | Yes            | AgentCore's managed runtime safely hosts complex agent patterns.                     |
+| Agent logic must be versioned and auditable                        | Yes            | AgentCore deployments are immutable and AWS-managed with full audit trails.          |
+| Quick MVP or one-off demo                                          | No             | Run raw Pipecat + Nova Sonic; skip AgentCore overhead.                               |
+
+If `AGENTCORE_AGENT_ARN` is not set in `.env`, the agent runs without bootstrap and uses Nova Sonic defaults. If it is set, AgentCore's bootstrap message customizes behavior before real-time interaction.
 
 ## Do I Need Both AWS Files?
 
@@ -130,7 +169,7 @@ AWS_PROFILE=vonage-dev agentcore deploy
 On success, copy the runtime ARN, for example:
 
 ```text
-arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/hello_agent-...
+arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-...
 ```
 
 ## 4. Set Runtime ARN
@@ -138,7 +177,7 @@ arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/hello_agent-...
 In repo root `.env`, set:
 
 ```bash
-AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/hello_agent-...
+AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-...
 ```
 
 ## 5. Run C5 Test
@@ -158,7 +197,7 @@ AWS_PROFILE=vonage-dev uv run python test_agentcore.py
 Expected success lines:
 
 ```text
-Using existing runtime: arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/hello_agent-QKnZAY4NSe
+Using existing runtime: arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-<runtime-id>
 Invoking agent with: "Say hello world"
 Agent response:
   "Hello, Say hello world! AgentCore is working."

@@ -9,8 +9,8 @@ dependencies = [
     "vonage>=4.0.0",
     "vonage-video-connector>=1.0.0; sys_platform == 'linux'",
 
-    # Pipecat AI pipeline framework with AWS + WebRTC extras
-    "pipecat-ai[aws,silero,webrtc]>=0.0.50",
+    # Pipecat AI framework from Vonage source (matches validated C3/C4 test setup)
+    "pipecat-ai[aws,aws-nova-sonic,silero,webrtc,vonage-video-connector] @ git+https://github.com/Vonage/pipecat.git",
 
     # AWS SDK
     "boto3>=1.34.0",

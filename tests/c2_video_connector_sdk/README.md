@@ -6,6 +6,27 @@ Isolated test that verifies the **Vonage Video Connector SDK** can join an exist
 
 > **Public Beta:** Vonage Video Connector is currently in beta.
 
+## What is Vonage Video Connector SDK?
+
+**Vonage Video Connector SDK** is a native Linux library that allows server-side applications to join Vonage Video sessions as WebRTC participants. It provides:
+
+- **WebRTC client capability:** Join a session as if you were a browser participant.
+- **Media frame access:** Receive and send raw audio/video frames from/to the session.
+- **Session integration:** Full participant lifecycle (join, publish, subscribe, leave).
+
+In this project, the Video Connector SDK is the **bridge between Vonage Video and Pipecat**. It joins the session (using credentials from C1), captures audio frames from participants, and feeds them into the Pipecat pipeline for processing.
+
+## Purpose
+
+This C2 test validates that:
+
+- The Video Connector SDK is properly installed and compatible.
+- The SDK can authenticate to Vonage using the session credentials from C1.
+- The SDK can establish a WebRTC connection and appear as a participant in the session.
+- Media frames can flow from the session into a local application.
+
+When complete, the SDK participant appears in Vonage Playground, confirming session connectivity is working.
+
 ---
 
 ## Prerequisites

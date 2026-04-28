@@ -1,4 +1,4 @@
-# C4 — AWS Bedrock + Nova Sonic + Vonage Pipecat Transport Integration
+# C4a — AWS Bedrock + Vonage Pipecat Transport Integration
 
 Two-stage test that validates AWS Bedrock integration with the Vonage Video transport (building on C3):
 
@@ -8,52 +8,6 @@ Two-stage test that validates AWS Bedrock integration with the Vonage Video tran
 This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API access and Vonage session lifecycle with external AI service.
 
 **Platform:** Linux only (Bedrock echo agent). Run via Docker on macOS — see setup below.
-
-## What is AWS Bedrock and Nova Sonic?
-
-**AWS Bedrock** is a managed foundation model service that provides:
-
-- **Foundation models:** Access to multiple LLM and multimodal models from AWS and partners.
-- **API-based inference:** No server management; invoke models via simple API calls.
-- **Pay-per-use:** No upfront costs; pay only for inference consumption.
-
-**Amazon Nova Sonic** (used in this project) is a lightweight, low-latency speech-to-speech model that:
-
-- Listens to incoming audio (STT).
-- Generates response text or passes it through an LLM.
-- Synthesizes response audio (TTS).
-- Operates at low latency suitable for real-time conversations (~200–400 ms for STT, ~100–200 ms for TTS).
-
-In this project:
-
-- Bedrock hosts the LLM (Nova Lite for text generation, Nova Sonic for speech-to-speech).
-- Pipecat calls Bedrock API to process transcribed text and generate responses.
-- Nova Sonic handles speech input/output, compressing the typical STT → LLM → TTS pipeline.
-
-## Bedrock vs AgentCore (Why Both?)
-
-C4 focuses on **Bedrock model inference**, not AgentCore runtime hosting.
-
-- **Bedrock in C4:** verifies credentials, model access, and live inference behavior.
-- **AgentCore in C5:** verifies deployable runtime logic (configure/deploy/invoke) and optional bootstrap integration.
-
-If C4 passes, your model layer is working. If C5 passes, your managed runtime layer is working.
-
-Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
-
-## Purpose
-
-This C4 test validates that:
-
-- AWS Bedrock credentials are correctly configured.
-- Nova Sonic models are available and accessible.
-- An end-to-end agent can listen to speech, generate a response, and speak back—all via Bedrock APIs.
-- Real-time latency with a production AI model is acceptable.
-
-**Stage 1** (credential validation) checks that Bedrock API is reachable and Nova Lite model access is enabled.  
-**Stage 2** (echo agent) runs a real conversational agent on Vonage sessions with Bedrock inference.
-
-When complete, you can ask the agent a question in the Vonage Playground, and it responds naturally with AI-generated speech backed by real Bedrock models.
 
 ---
 
@@ -74,10 +28,10 @@ When complete, you can ask the agent a question in the Vonage Playground, and it
 ### macOS (Docker)
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4a_aws_bedrock
 
 # Build Dockerfile (includes git for Pipecat source install, Python 3.13, boto3, Vonage SDK)
-docker build -t c4-bedrock-nova-sonic .
+docker build -t c4a-bedrock .
 
 # Ensure root .env has AWS_PROFILE set
 # (or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY for explicit credentials)
@@ -86,7 +40,7 @@ docker build -t c4-bedrock-nova-sonic .
 ### Native Linux
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4a_aws_bedrock
 
 python -m venv .venv
 source .venv/bin/activate
@@ -108,7 +62,7 @@ docker run --rm -e AWS_PROFILE=vonage-dev \
   -e AWS_REGION=us-east-1 \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
-  c4-bedrock-nova-sonic python test_bedrock.py
+  c4a-bedrock python test_bedrock.py
 
 # Native Linux
 source .venv/bin/activate
@@ -126,7 +80,7 @@ Sending test prompt: "Say hello in exactly one sentence."
 ✓ Response received:
   Hello! I'm Nova Lite, an AI assistant — how can I help you today?
 
-Test C4 PASSED ✓
+Test C4a PASSED ✓
 ```
 
 ### What It Tests
@@ -187,7 +141,7 @@ docker run --rm \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
-  c4-bedrock-nova-sonic python bedrock_echo_agent.py
+  c4a-bedrock python bedrock_echo_agent.py
 
 # Native Linux (assumes VONAGE_SESSION_ID is set in root .env)
 source .venv/bin/activate
@@ -199,13 +153,13 @@ python bedrock_echo_agent.py
 Use this exact flow for reproducible results:
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4a_aws_bedrock
 
 # 1) Build latest image
-docker build -t c4-bedrock-nova-sonic .
+docker build -t c4a-bedrock .
 
 # 2) Clear previous log
-rm -f c4-bedrock-nova-sonic-echo.log
+rm -f c4a-bedrock-echo.log
 
 # 3) Start agent and capture output
 docker run --rm \
@@ -218,18 +172,16 @@ docker run --rm \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
   -v "$(pwd)/logs:/app/logs" \
-  c4-bedrock-nova-sonic python bedrock_echo_agent.py 2>&1 | tee c4-bedrock-nova-sonic-echo.log
+  c4a-bedrock python bedrock_echo_agent.py 2>&1 | tee c4a-bedrock-echo.log
 ```
 
 Then in Vonage Playground:
 
-1. Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
-2. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-3. Join an existing session using the same session ID from `.env`
-4. Publish mic/audio
-5. Speak for 10-20 seconds
-6. Confirm you hear assistant audio
-7. Press Ctrl+C to stop the agent
+1. Join using the same session ID from `.env`
+2. Publish mic/audio
+3. Speak for 10-20 seconds
+4. Confirm you hear assistant audio
+5. Press Ctrl+C to stop the agent
 
 ### Expected Runtime Output (Stage 2)
 
@@ -250,28 +202,25 @@ Press Ctrl+C to stop.
 
 Same workflow as C3, with LLM processing:
 
-1. **Start C4 agent** (Docker or native)
+1. **Start C4a agent** (Docker or native)
 2. **Join [Vonage Playground](https://tokbox.com/developer/tools/playground/)**
-
-- Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-- Use the same session ID from `.env`
-- Enable camera + microphone
-
-1. **Publish video/audio**
-1. **Speak into microphone** (text will be processed through Bedrock LLM)
-1. **Wait 5-10 seconds** for LLM response + echo
-1. **Unpublish, then disconnect** from Playground
-1. **Stop agent** (Ctrl+C)
-1. **Verify logs** for success signals (see below)
+   - Use the same session ID from `.env`
+   - Enable camera + microphone
+3. **Publish video/audio**
+4. **Speak into microphone** (text will be processed through Bedrock LLM)
+5. **Wait 5-10 seconds** for LLM response + echo
+6. **Unpublish, then disconnect** from Playground
+7. **Stop agent** (Ctrl+C)
+8. **Verify logs** for success signals (see below)
 
 ### Verify Success from Logs
 
 ```bash
 # Check key markers from the latest run
-grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4-bedrock-nova-sonic-echo.log
+grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4a-bedrock-echo.log
 
 # If your log includes binary segments, use strings extraction first
-strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
+strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
 ```
 
 ### Success Checklist
@@ -284,7 +233,7 @@ strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova S
 - [ ] Participant speaks → assistant audio returns (audio loop confirmed)
 - [ ] Client disconnects (logs: "Client disconnected")
 - [ ] Participant leaves (logs: "Participant left")
-- [ ] Agent stops cleanly (Ctrl+C → "Test C4 Bedrock integration complete ✓")
+- [ ] Agent stops cleanly (Ctrl+C → "Test C4a Bedrock integration complete ✓")
 
 ---
 
@@ -317,8 +266,8 @@ strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova S
 
 ## Next Steps
 
-- **C5:** Validate AgentCore runtime deployment and invocation against this transport path
-- **App:** Run full app integration with Bedrock + Vonage transport + optional AgentCore bootstrap
+- **C4:** Run the integrated Bedrock + Nova Sonic + Vonage transport test in `tests/c4_bedrock_nova_sonic`
+- **C5:** Full AgentCore integration with Bedrock + Vonage transport for multi-turn context
 - **Monitoring:** Extend C4a to log all Bedrock invocations (prompts, responses, latency) for observability
 
 ---

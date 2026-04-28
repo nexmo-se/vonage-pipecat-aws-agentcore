@@ -24,7 +24,7 @@ from typing import Any
 import structlog
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from agent import VonagePipecatAgent
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
     if session_id:
         logger.info("Auto-joining session on startup", session_id=session_id)
-        _agent = VonagePipecatAgent()
+        _agent = VonagePipecatAgent(on_event=_broadcast)
         _agent.session_id = session_id
         asyncio.create_task(_agent.start())
     yield
@@ -74,18 +74,30 @@ async def health() -> dict[str, str]:
 @app.get("/status", response_class=JSONResponse)
 async def status() -> dict[str, Any]:
     if _agent is None:
-        return {"running": False, "session_id": None, "connected": False}
+        return {
+            "running": False,
+            "session_id": None,
+            "connected": False,
+            "last_error": None,
+            "event_counts": {},
+        }
     return {
         "running": _agent._task is not None and not _agent._task.done(),
         "session_id": _agent.session_id,
         "connected": _agent.connected,
+        "last_error": _agent.last_error,
+        "event_counts": _agent.event_counts,
     }
 
 
 @app.post("/join", response_class=JSONResponse)
-async def join(session_id: str | None = None) -> dict[str, str]:
+async def join(payload: dict[str, Any] | None = Body(default=None), session_id: str | None = None) -> dict[str, str]:
     global _agent
-    target_session = (session_id or os.getenv("VONAGE_SESSION_ID", "")).strip()
+    payload_session = ""
+    if payload:
+        payload_session = str(payload.get("session_id", "")).strip()
+
+    target_session = (payload_session or session_id or os.getenv("VONAGE_SESSION_ID", "")).strip()
     if not target_session:
         return JSONResponse(
             status_code=400,
@@ -96,7 +108,7 @@ async def join(session_id: str | None = None) -> dict[str, str]:
             status_code=409,
             content={"error": "Agent is already running. Call /leave first."},
         )
-    _agent = VonagePipecatAgent()
+    _agent = VonagePipecatAgent(on_event=_broadcast)
     _agent.session_id = target_session
     asyncio.create_task(_agent.start())
     await _broadcast({"event": "agent_joined", "session_id": target_session})

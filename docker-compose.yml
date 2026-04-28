@@ -40,6 +40,9 @@ services:
       context: ./app
       dockerfile: Dockerfile
     env_file: .env
+    volumes:
+      - ${HOME}/.aws:/root/.aws:ro
+      - ./private.key:/app/private.key:ro
     ports:
       - "${PORT:-8000}:8000"
     restart: unless-stopped

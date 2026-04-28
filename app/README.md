@@ -3,16 +3,34 @@
 This is the complete application that wires all components together:
 
 - **Vonage Video Connector Pipecat transport** — joins the video session and bridges media into Pipecat
-- **Pipecat pipeline** — real-time audio processing
-- **AWS Nova Sonic** — speech-to-speech AI (STT + TTS)
-- **AWS Bedrock AgentCore** — LLM reasoning and business logic
+- **Pipecat pipeline** — real-time audio processing and session orchestration
+- **AWS Nova Sonic** — speech-to-speech AI inside the live media loop
+- **AWS Bedrock AgentCore Runtime** — optional bootstrap context for initial assistant behavior
 - **FastAPI** — WebSocket management API
+
+## Bedrock vs AgentCore (Why Both?)
+
+These services are complementary:
+
+- **Amazon Bedrock** is the model inference layer for live conversation (Nova Sonic / Nova Lite).
+- **Amazon Bedrock AgentCore** is the managed runtime layer for deployable agent app logic.
+
+In this app, Bedrock powers real-time model responses, while AgentCore is optionally invoked at startup (when `AGENTCORE_AGENT_ARN` is set) to prime assistant behavior.
+
+Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
 
 This app uses the **transport** route, not the serializer route. In practice that means:
 
 - You need the **Vonage Video Linux SDK / Video Connector SDK** available in Linux or Docker.
 - You do **not** need the **Vonage Audio Connector SDK** for this sample.
 - The Audio Connector SDK only applies to a separate serializer/WebSocket integration pattern that is not used in this repo.
+
+## Transport vs Serializer (When to Choose)
+
+| Option                           | Architecture Shape                                                                    | Choose It When                                                                                              | Official Vonage Docs                                                                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Transport** (implemented here) | Browser/WebRTC <-> Vonage Video Session <-> Video Connector SDK <-> Pipecat transport | You need AI as a session participant in a shared Vonage Video room with join/leave/publish semantics        | [Vonage Pipecat Transport Guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport), [Vonage Video Connector Guide](https://developer.vonage.com/en/video/guides/vonage-video-connector) |
+| **Serializer** (planned Phase 2) | Voice/media stream <-> serializer/WebSocket bridge <-> Pipecat                        | You need telephony-oriented or protocol-level media event control, without room-style participant semantics | [Vonage Audio Connector Guide](https://developer.vonage.com/en/video/guides/audio-connector), [Vonage Voice API Overview](https://developer.vonage.com/en/voice/overview)                                                    |
 
 **Platform: Linux** (Vonage Video Connector SDK is a native Linux binary). Use Docker on macOS.
 
@@ -36,7 +54,10 @@ Vonage Video Platform
 │    └── /ws  WebSocket management     │
 │                                      │
 │  Pipecat Pipeline                    │
-│    VonageVideoConnectorTransport ──► NovaSonic ──► AgentCore ──► NovaSonic ──► VonageVideoConnectorTransport
+│    VonageVideoConnectorTransport ──► Nova Sonic ──► VonageVideoConnectorTransport
+│                                      │
+│  Optional startup bootstrap          │
+│    AgentCore Runtime ──► initial response style/context
 └──────────────────────────────────────┘
 ```
 
@@ -46,7 +67,7 @@ Vonage Video Platform
 
 - Docker + Docker Compose (macOS / non-Linux)
   **or** Python 3.13.x with uv (native Linux)
-- All credentials in the root `.env` file (all tests C1–C5 passed)
+- All credentials in the root `.env` file (stages `C1`, `C2`, `C3`, `C4a`, `C4`, and `C5` passed)
 
 ---
 
@@ -64,10 +85,70 @@ The agent starts listening on `http://localhost:8000`.
 ```bash
 cd app
 
-uv venv
-uv pip install -r pyproject.toml   # or: uv sync
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-uv run uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+## Runtime Notes
+
+- When `VONAGE_SESSION_ID` is set, the app auto-joins that session on startup.
+- `GET /status` is the quickest health check for the live agent pipeline. A healthy startup should eventually show `running: true`, `connected: true`, and `last_error: null`.
+- In Docker, the compose service mounts `${HOME}/.aws` to `/root/.aws` and `./private.key` to `/app/private.key`, so the app can reuse the AWS profile and Vonage key material already validated in the test folders.
+- If you want to stop the live pipeline without stopping the API process, call `POST /leave`.
+
+## End-to-End Test (From Scratch)
+
+Use this sequence for a clean, repeatable validation run:
+
+1. Stop all app containers:
+
+```bash
+# from repo root
+docker compose --profile app down --remove-orphans
+```
+
+1. Start fresh app container:
+
+```bash
+docker compose --profile app up -d --build app
+```
+
+1. Confirm API is up:
+
+```bash
+curl http://localhost:8000/
+curl http://localhost:8000/status
+```
+
+1. Rejoin explicitly only if needed (for example after a manual leave):
+
+```bash
+SESSION_ID="$(grep '^VONAGE_SESSION_ID=' .env | cut -d= -f2-)"
+
+curl -X POST http://localhost:8000/join \
+        -H "Content-Type: application/json" \
+        -d "{\"session_id\":\"${SESSION_ID}\"}"
+```
+
+1. Open Vonage Playground and connect to the existing session:
+
+- [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
+- Log in to the same Vonage account that owns your `VONAGE_APPLICATION_ID`
+- Paste `VONAGE_SESSION_ID` from `.env` into the existing session flow
+
+1. Optional: tail logs during the test:
+
+```bash
+docker compose --profile app logs -f app
+```
+
+1. Stop when done:
+
+```bash
+docker compose --profile app down --remove-orphans
 ```
 
 ---
@@ -88,18 +169,18 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000
 
 All variables are loaded from the root `.env` file (see `.env.example`):
 
-| Variable                | Description                                             |
-| ----------------------- | ------------------------------------------------------- |
-| `VONAGE_APPLICATION_ID` | Vonage Video API application ID                         |
-| `VONAGE_PRIVATE_KEY`    | Path to Vonage private key file                         |
-| `VONAGE_SESSION_ID`     | Vonage Video session to join on startup                 |
-| `AWS_PROFILE`           | AWS CLI profile name (recommended, e.g. `vonage-dev`)   |
-| `AWS_ACCESS_KEY_ID`     | AWS access key (optional fallback if not using profile) |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key (optional fallback if not using profile) |
-| `AWS_REGION`            | AWS region (default: `us-east-1`)                       |
-| `BEDROCK_MODEL_ID`      | Nova Sonic model ID (default: `amazon.nova-sonic-v1:0`) |
-| `AGENTCORE_AGENT_ARN`   | ARN of deployed AgentCore agent                         |
-| `PORT`                  | FastAPI port (default: `8000`)                          |
+| Variable                | Description                                               |
+| ----------------------- | --------------------------------------------------------- |
+| `VONAGE_APPLICATION_ID` | Vonage Video API application ID                           |
+| `VONAGE_PRIVATE_KEY`    | Path to Vonage private key file                           |
+| `VONAGE_SESSION_ID`     | Vonage Video session to join on startup                   |
+| `AWS_PROFILE`           | AWS CLI profile name (recommended, e.g. `vonage-dev`)     |
+| `AWS_ACCESS_KEY_ID`     | AWS access key (optional fallback if not using profile)   |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key (optional fallback if not using profile)   |
+| `AWS_REGION`            | AWS region (default: `us-east-1`)                         |
+| `BEDROCK_MODEL_ID`      | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`) |
+| `AGENTCORE_AGENT_ARN`   | Optional AgentCore runtime ARN used for startup bootstrap |
+| `PORT`                  | FastAPI port (default: `8000`)                            |
 
 ---
 

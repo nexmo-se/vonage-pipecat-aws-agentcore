@@ -6,6 +6,35 @@ Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage
 
 > **Public Beta:** The Vonage Video Connector Pipecat integration is currently in beta. The official documentation is [the Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport), and the published code source is [the Vonage Pipecat repository](https://github.com/Vonage/pipecat).
 
+## What is Pipecat?
+
+**Pipecat AI** is an open-source orchestration framework for real-time conversational AI. It provides:
+
+- **Frame-based pipeline:** Processes media (audio/video) as discrete frames flowing through a pipeline.
+- **Transport abstraction:** Pluggable transports for different session types (Vonage, Twilio, etc.).
+- **Built-in processors:** VAD (voice activity detection), STT, TTS, LLM integration.
+- **Real-time coordination:** Handles frame timing, buffering, and synchronization at low latency.
+
+In this project, Pipecat orchestrates the real-time conversation loop:
+
+1. Receives audio frames from Vonage Video Connector transport.
+2. Detects speech (VAD).
+3. Transcribes to text (STT via Nova Sonic).
+4. Processes with LLM (via AgentCore or direct Bedrock).
+5. Generates response audio (TTS via Nova Sonic).
+6. Sends frames back to Vonage.
+
+## Purpose
+
+This C3 test validates that:
+
+- Pipecat pipeline is correctly installed and configured.
+- Vonage Video Connector transport can integrate with Pipecat.
+- The echo bot can receive audio from the session and play it back in real time.
+- Full round-trip latency (browser → Vonage → Pipecat → Vonage → browser) is acceptable.
+
+When complete, you can speak in a browser participant, hear your audio echoed back by the agent, and confirm media flow through the entire Pipecat transport layer.
+
 ---
 
 ## Prerequisites
@@ -13,7 +42,7 @@ Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage
 - Docker + Docker Compose (macOS) **or** Linux host with Python 3.13+ on Linux AMD64/ARM64
 - Completed test **C1** — `VONAGE_SESSION_ID` must be set in `.env`
 - `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY` set in `.env`
-- A browser tab open on the Vonage playground URL from test C1 (to provide audio input)
+- Access to Vonage Playground while logged into the Vonage account that owns `VONAGE_APPLICATION_ID`
 
 ### SDK versions (latest baseline)
 
@@ -49,7 +78,6 @@ If you are validating C3 manually from a browser participant, use this flow:
 2. Start C3 and save logs to a file:
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore
 mkdir -p logs
 VONAGE_VIDEO_CONNECTOR_LOG_LEVEL=DEBUG \
 VONAGE_DEBUG_EVENT_PAYLOADS=true \
@@ -57,21 +85,20 @@ VONAGE_MONITOR_INTERVAL_SECONDS=5 \
 docker compose run --rm --build c3-pipecat-transport | tee logs/c3-pipecat-transport.log
 ```
 
-3. In a second terminal, generate/open the browser demo URL from C1:
+1. In a second terminal, confirm your app session id from `.env`:
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore/tests/c1_vonage_video_session
-source .venv/bin/activate
-python3 test_session.py
+grep '^VONAGE_SESSION_ID=' .env
 ```
 
-4. Open the printed Browser Demo URL (Vonage Playground).
-   If needed, you can also open the playground directly: https://tools.vonage.com/video/playground/
-5. Enable camera and microphone permissions in the browser.
-6. Click Publish.
-7. Wait 5-10 seconds while C3 processes media.
-8. Click Unpublish.
-9. Click Disconnect.
+1. Open Vonage Playground: [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
+1. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`.
+1. Join an existing session using `VONAGE_SESSION_ID` from `.env`.
+1. Enable camera and microphone permissions in the browser.
+1. Click Publish.
+1. Wait 5-10 seconds while C3 processes media.
+1. Click Unpublish.
+1. Click Disconnect.
 
 After this sequence, stop C3 with `Ctrl+C` and inspect the saved log file.
 
@@ -80,7 +107,6 @@ After this sequence, stop C3 with `Ctrl+C` and inspect the saved log file.
 Use the captured log file to confirm the participant lifecycle and monitoring counters:
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore
 grep -E 'Connected to Vonage Video session|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|monitor: active_streams' logs/c3-pipecat-transport.log
 ```
 

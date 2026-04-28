@@ -1,24 +1,37 @@
 # Building Real-Time AI Voice Agents with Vonage, Pipecat, and AWS Bedrock AgentCore
 
-> **TL;DR** — This post walks through building a production-ready AI voice agent that joins a Vonage video call, listens to participants, reasons using AWS Bedrock AgentCore, and responds using Amazon Nova Sonic — all in real time.
+This post walks through building a production-ready AI voice agent that joins a Vonage video call, listens to participants, responds with Amazon Nova Sonic in real time, and optionally uses AWS Bedrock AgentCore to bootstrap assistant behavior.
 
 ---
 
 ## Introduction
 
-Conversational AI has moved from text chatbots to real-time voice agents that can participate in video calls just like a human colleague. In this post I'll show you how to wire together three powerful platforms:
+Conversational AI has moved from text chatbots to real-time voice agents that can participate in video calls just like a human colleague. In this post I'll show you how to wire together four key components:
 
 1. **Vonage Video API + Video Connector SDK** — letting a Python server join a WebRTC video session as a first-class audio/video participant
 2. **Pipecat AI** — an open-source framework for building real-time audio/video pipelines
-3. **AWS Bedrock with Amazon Nova Sonic** — a speech-to-speech model that handles STT, LLM reasoning, and TTS in a single low-latency API call
-4. **AWS Bedrock AgentCore Runtime** — a managed runtime for deploying and scaling AI agents
+3. **AWS Bedrock with Amazon Nova Sonic** — a low-latency speech-to-speech model for the live conversation loop
+4. **AWS Bedrock AgentCore Runtime** — an optional bootstrap runtime for shaping initial assistant behavior
 
 By the end you'll have a working agent that:
 
 - Joins a Vonage video session
 - Listens to participants in real time
-- Generates intelligent responses via AgentCore
+- Optionally bootstraps assistant behavior via AgentCore
 - Speaks back using Nova Sonic's natural TTS
+
+The full project, runnable app, and environment setup live in the repository root [README](../README.md).
+
+## Bedrock vs AgentCore (Why Both?)
+
+These services solve different layers of the system:
+
+- **Amazon Bedrock** is the model inference layer (Nova Sonic / Nova Lite) for real-time responses.
+- **Amazon Bedrock AgentCore** is the managed runtime layer for deployable agent app logic.
+
+In this implementation, Bedrock powers the live speech loop, and AgentCore is optional startup bootstrap context when `AGENTCORE_AGENT_ARN` is configured.
+
+Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
 
 ---
 
@@ -35,14 +48,15 @@ Vonage Video Platform
 │  Python Agent (Docker / Linux)                   │
 │                                                  │
 │  Pipecat Pipeline                                │
-│  VonageTransport ──► NovaSonic ──► AgentCore     │
-│                  ◄── NovaSonic ◄──               │
+│  VonageTransport ──► NovaSonic ──► VonageTransport │
+│                                                  │
+│  Optional startup bootstrap via AgentCore Runtime│
 │                                                  │
 │  FastAPI management API (:8000)                  │
 └──────────────────────────────────────────────────┘
 ```
 
-The pipeline is fully streaming — audio frames flow through each stage without buffering entire utterances, keeping end-to-end latency well below a second.
+The pipeline is fully streaming. Audio frames flow through each stage without buffering entire utterances, keeping end-to-end latency well below a second.
 
 ---
 
@@ -53,115 +67,188 @@ The pipeline is fully streaming — audio frames flow through each stage without
 - Docker (for running the Linux-native Video Connector SDK on macOS)
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 
----
+## AWS Requirements
 
-## Step 1 — Vonage Video Session (Test C1)
+Before running the app, make sure AWS is ready in three areas:
 
-Before running any code, create a Vonage Video application in the dashboard, download the `private.key`, and note your Application ID.
-
-```bash
-cd tests/c1_vonage_video_session
-uv venv && uv pip install -r requirements.txt
-uv run python test_session.py
-```
-
-This creates a video session and prints a playground URL. Open it in a browser — you'll see your own webcam. This browser tab provides the audio that the AI agent will listen to in later steps.
-
-The script also prints the `VONAGE_SESSION_ID` — copy this into your `.env` file.
-
----
-
-## Step 2 — Video Connector SDK (Test C2)
-
-The Vonage Video Connector SDK allows a server-side Linux process to join a WebRTC session as a native participant — sending and receiving audio/video. It is the bridge between the Vonage cloud and your Python agent.
+1. Identity and region
+   - Configure `AWS_PROFILE` and `AWS_REGION` (recommended region in this repo: `us-east-1`).
+   - Verify credentials:
 
 ```bash
-# macOS users — run inside Docker:
-docker compose run --rm --build c2-video-connector
+aws sts get-caller-identity --profile vonage-dev
 ```
 
-When this test passes you should see a second participant thumbnail appear in your browser tab.
+1. Bedrock model access
+   - Enable access for Amazon Nova Sonic and Nova Lite in the Bedrock Model Access console.
+
+1. IAM permissions
+   - Ensure your principal can invoke Bedrock models and AgentCore runtime endpoints.
+   - Typical actions used by this project include:
+     - `bedrock:InvokeModel`
+     - `bedrock:InvokeModelWithResponseStream`
+     - `bedrock-agentcore:InvokeAgentRuntime`
 
 ---
 
-## Step 3 — Pipecat Echo Bot (Test C3)
+## Step 1 — Configure Credentials
 
-With the transport layer verified, we add Pipecat on top. This test runs a simple echo bot — it captures audio from the browser participant, runs it through a voice-activity detector, and plays it back.
+Create a Vonage Video application in the dashboard, download `private.key`, and capture your Application ID.
 
-```bash
-docker compose run --rm --build c3-pipecat-transport
-```
+In `.env`, set at minimum:
 
-Speak into your browser microphone. After a short pause you should hear your own voice echoed back through the session. This confirms the full Pipecat ↔ Vonage round-trip is working.
+- `VONAGE_APPLICATION_ID`
+- `VONAGE_PRIVATE_KEY`
+- `VONAGE_SESSION_ID` (existing session)
+- `AWS_PROFILE` and `AWS_REGION`
+- `BEDROCK_MODEL_ID`
+- `AGENTCORE_AGENT_ARN` (optional, only for startup bootstrap behavior)
 
----
-
-## Step 4 — AWS Bedrock + Nova Sonic (Test C4)
-
-```bash
-cd tests/c4_bedrock_nova_sonic
-uv venv && uv pip install -r requirements.txt
-uv run python test_bedrock.py           # Stage 1: Credential verification
-uv run python bedrock_echo_agent.py     # Stage 2: Bedrock + Vonage integration
-```
-
-This combined test validates your AWS credentials with **Amazon Nova Lite** (fast, lightweight text model for sanity check), then moves to **Nova Sonic** — Amazon's speech-to-speech model that accepts raw audio, reasons internally, and returns synthesised speech, removing the need for separate STT and TTS services.
-
-The test sends a short silent WAV and receives a response audio file. Play `response_output.wav` to verify Nova Sonic is working.
+Use the AWS verification command from **AWS Requirements** above to confirm your profile is ready.
 
 ---
 
-## Step 5 — AgentCore Runtime (Test C5)
+## Step 2 — Run the Application
 
-AWS Bedrock AgentCore lets you deploy an AI agent as a managed, serverless endpoint. The test creates a hello-world agent, invokes it, and cleans up.
-
-```bash
-cd tests/c5_agentcore
-uv venv && uv pip install -r requirements.txt
-uv run python test_agentcore.py
-```
-
-Copy the agent ARN into `AGENTCORE_AGENT_ARN` in your `.env` for use by the full app.
-
----
-
-## Step 6 — Full Application
-
-With all five tests passing, run the complete agent:
+Start the integrated app:
 
 ```bash
 # macOS / non-Linux
 docker compose --profile app up --build
 ```
 
-The FastAPI server starts on port 8000. The agent automatically joins the session in `VONAGE_SESSION_ID` and listens for participants.
+The FastAPI server starts on port 8000. The agent auto-joins `VONAGE_SESSION_ID` and waits for participants.
 
-**Try it:** Open the Vonage playground URL from test C1 and say hello. The agent will respond in real time through Nova Sonic.
+---
+
+## Step 3 — Validate Live Session
+
+1. Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
+2. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
+3. Join the existing session from `.env`
+4. Publish mic/audio and speak
+5. Confirm the agent responds through Nova Sonic
+
+Optional runtime checks:
+
+```bash
+curl http://localhost:8000/
+curl http://localhost:8000/status
+```
+
+---
+
+## SDK Usage Snippets
+
+These snippets are intentionally simplified to highlight SDK usage. For the production implementation used in this repo, see [app/agent.py](../app/agent.py).
+
+### 1) Vonage auth + publisher token
+
+```python
+from vonage import Auth, Vonage
+from vonage_video import TokenOptions
+
+client = Vonage(
+    Auth(
+        application_id=application_id,
+        private_key=private_key_path,
+    )
+)
+
+token = client.video.generate_client_token(
+    TokenOptions(session_id=session_id, role="publisher")
+)
+```
+
+### 2) Pipecat Vonage transport setup
+
+```python
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.transports.vonage.video_connector import (
+    VonageVideoConnectorTransport,
+    VonageVideoConnectorTransportParams,
+)
+
+transport = VonageVideoConnectorTransport(
+    application_id=application_id,
+    session_id=session_id,
+    token=token,
+    params=VonageVideoConnectorTransportParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        video_in_enabled=False,
+        video_out_enabled=False,
+        audio_in_sample_rate=16000,
+        audio_out_sample_rate=24000,
+        vad_analyzer=SileroVADAnalyzer(),
+        audio_in_auto_subscribe=True,
+    ),
+)
+```
+
+### 3) Nova Sonic service + pipeline wiring
+
+```python
+import boto3
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.services.aws.nova_sonic.llm import AWSNovaSonicLLMService, Params
+
+session = boto3.Session(profile_name="vonage-dev", region_name="us-east-1")
+creds = session.get_credentials().get_frozen_credentials()
+bedrock_model_id = "amazon.nova-2-sonic-v1:0"
+
+context = LLMContext(messages=[{"role": "user", "content": "Greet briefly."}])
+context_aggregator = LLMContextAggregatorPair(context)
+
+nova_sonic = AWSNovaSonicLLMService(
+    access_key_id=creds.access_key,
+    secret_access_key=creds.secret_key,
+    session_token=creds.token,
+    region="us-east-1",
+    model=bedrock_model_id,
+    params=Params(
+        input_sample_rate=16000,
+        input_channel_count=1,
+        output_sample_rate=24000,
+        output_channel_count=1,
+    ),
+)
+
+pipeline = Pipeline([
+    transport.input(),
+    context_aggregator.user(),
+    nova_sonic,
+    context_aggregator.assistant(),
+    transport.output(),
+])
+```
 
 ---
 
 ## Key Pipecat Pipeline Design
 
-The pipeline in `app/agent.py` chains four stages:
+The pipeline in `app/agent.py` chains five stages:
 
 ```python
 pipeline = Pipeline([
     transport.input(),   # Audio frames from Vonage WebRTC
-    nova_sonic.stt(),    # Speech → text (streaming)
-    agentcore,           # Text → AgentCore → text response
-    nova_sonic.tts(),    # Text → synthesised speech (streaming)
+    context_aggregator.user(),
+    nova_sonic,          # Streaming speech-to-speech model
+    context_aggregator.assistant(),
     transport.output(),  # Audio frames back to Vonage WebRTC
 ])
 ```
 
-Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic's streaming API means the TTS stage starts generating audio before the full LLM response is complete — dramatically reducing perceived latency.
+Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic streams audio output early, so playback starts before the full response is complete, which keeps perceived latency low.
 
 ---
 
 ## Deployment Considerations
 
 - **Linux requirement** — The Vonage Video Connector SDK is a native Linux binary. Use Docker on macOS for development; deploy to a Linux VM or container for production.
-- **AgentCore scaling** — AgentCore Runtime handles scaling automatically. Each session creates an independent agent invocation.
+- **AgentCore scaling** — AgentCore Runtime can scale independently when used for startup bootstrap calls.
 - **Credentials** — Never commit `.env` or `private.key` to source control. Use AWS Secrets Manager or environment injection in production.
 - **Nova Sonic pricing** — Billed per second of audio processed. The pipeline's VAD (voice activity detection) ensures the model is only called when a participant is speaking.
 
@@ -171,10 +258,10 @@ Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic's stream
 
 In this post we built a real-time AI voice agent that:
 
-✅ Joins a Vonage WebRTC video session as a server-side participant  
-✅ Processes speech with Amazon Nova Sonic (STT + LLM + TTS in one call)  
-✅ Delegates reasoning to AWS Bedrock AgentCore Runtime  
-✅ Returns synthesised audio in near real time
+- Joins a Vonage WebRTC video session as a server-side participant
+- Processes live conversation with Amazon Nova Sonic in a streaming loop
+- Optionally uses AWS Bedrock AgentCore Runtime to bootstrap assistant style/context
+- Returns synthesised audio in near real time
 
 The complete source code is available at [github.com/nexmo-se/vonage-pipecat-aws-agentcore](https://github.com/nexmo-se/vonage-pipecat-aws-agentcore).
 

@@ -14,8 +14,9 @@ Run the folders in this order:
 1. `c1_vonage_video_session`
 2. `c2_video_connector_sdk`
 3. `c3_pipecat_transport`
-4. `c4_bedrock_nova_sonic`
-5. `c5_agentcore`
+4. `c4a_aws_bedrock`
+5. `c4_bedrock_nova_sonic`
+6. `c5_agentcore`
 
 C1 is the bootstrap step for the Vonage side. It creates or confirms the session state that C2 and C3 need.
 
@@ -45,11 +46,11 @@ C4a validates the AWS-side basics separately before speech and runtime deploymen
 
 It verifies AWS credentials, Bedrock access, and a simple Nova Lite text inference flow.
 
-### C4b — Nova Sonic speech path
+### C4 — Bedrock + Nova Sonic transport integration
 
-C4b validates the Nova Sonic speech-to-speech layer separately before it is combined with the Vonage transport in the full app.
+C4 validates the Nova Sonic speech-to-speech layer combined with the Vonage transport path used by the full app.
 
-It proves the standalone Pipecat + Nova Sonic path is working.
+It proves the integrated Pipecat + Vonage + Nova Sonic path is working.
 
 ### C5 — AgentCore deployable runtime
 
@@ -68,9 +69,9 @@ C1: Vonage auth + session
 C2: Video Connector joins session
 C3: Pipecat transport over Vonage
 C4a: Bedrock credentials + text model
-C4b: Nova Sonic speech pipeline
+C4: Bedrock + Nova Sonic speech pipeline
 C5: AgentCore deploy/invoke
-App: C3 transport + C4b speech + C5 runtime
+App: C3 transport + C4 speech + C5 runtime
 ```
 
 ## Practical Guidance

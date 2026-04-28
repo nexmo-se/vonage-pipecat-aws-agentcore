@@ -6,7 +6,7 @@ Verifies:
   1. Authentication with VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY
   2. Video session creation via the Vonage Video REST API
   3. Client token generation (publisher role)
-  4. Prints a Vonage playground URL for browser verification
+  4. Prints credentials to enter manually in the Vonage Playground
 
 Platform: Any (macOS, Linux, Windows)
 """
@@ -128,17 +128,10 @@ def generate_publisher_token(client, session_id: str, expire_time: int = 86400) 
             role="publisher",
         )
     )
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
     print(f"✓ Generated client token (publisher, {expire_time // 3600} h)")
     return token
-
-
-def build_playground_url(application_id: str, session_id: str, token: str) -> str:
-    return (
-        "https://tokbox.com/developer/tools/playground/"
-        f"?apiKey={application_id}"
-        f"&sessionId={session_id}"
-        f"&token={token}"
-    )
 
 
 def main() -> None:
@@ -146,14 +139,15 @@ def main() -> None:
     client = create_vonage_client(application_id, private_key_file)
     session_id = get_or_create_session_id(client, session_id)
     token = generate_publisher_token(client, session_id)
-    demo_url = build_playground_url(application_id, session_id, token)
 
     separator = "=" * 60
     print(f"\n{separator}")
-    print("Browser Demo URL:")
-    print(demo_url)
+    print("Vonage Playground credentials (https://tokbox.com/developer/tools/playground/)")
     print(separator)
-    print("\nOpen the URL above in a browser to join the video session.")
+    print(f"API Key:    {application_id}")
+    print(f"Session ID: {session_id}")
+    print(f"Token:      {token}")
+    print(separator)
     print("\nTest C1 PASSED ✓")
 
 

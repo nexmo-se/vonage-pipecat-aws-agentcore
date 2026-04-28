@@ -4,6 +4,28 @@ Isolated test that verifies you can authenticate with the Vonage Video API, crea
 
 **Platform:** Any (macOS, Linux, Windows)
 
+## What is Vonage Video API?
+
+**Vonage Video API** (formerly OpenTok) is a real-time communications platform that provides:
+
+- **Session management:** Create and manage persistent communication sessions.
+- **Media routing:** Route audio/video between participants (browsers, servers, apps).
+- **WebRTC infrastructure:** Handle NAT traversal, codecs, and media negotiation.
+- **Client SDKs:** Browser (Web SDK) and server-side (Video Connector) libraries for joining sessions.
+
+In this project, Vonage Video serves as the **session layer and media intermediary**. Browser users and the AI agent both join the same Vonage session; Vonage routes media between them in real time.
+
+## Purpose
+
+This C1 test validates that you can:
+
+- Authenticate to Vonage Video API with your credentials.
+- Create a persistent session for use in C2–C3 tests.
+- Generate a browser-compatible token to join that session manually.
+- See the session accessible in the Vonage Playground.
+
+When complete, you have a real Vonage session ID and understand the browser join flow.
+
 ## C1 Checklist
 
 Run C1 with this quick checklist:
@@ -72,8 +94,6 @@ pip install -r requirements.txt
 ### Option A (from repo root)
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore
-
 # one-time setup
 cp .env.example .env
 # edit .env and set VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY
@@ -90,7 +110,6 @@ python3 test_session.py
 ### Option B (if you are already in this C1 folder)
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore/tests/c1_vonage_video_session
 source .venv/bin/activate
 python3 test_session.py
 ```
@@ -100,7 +119,6 @@ python3 test_session.py
 Command to enter:
 
 ```bash
-cd /Users/KPhi/Downloads/REPOS/vonage-pipecat-aws-agentcore/tests/c1_vonage_video_session
 source .venv/bin/activate
 python3 test_session.py
 ```
@@ -110,7 +128,7 @@ Expected terminal result (shape):
 ```text
 Creating new Vonage Video session …
 ✓ Created session: 2_MX...
-✓ Saved VONAGE_SESSION_ID to /Users/.../vonage-pipecat-aws-agentcore/.env
+✓ Saved VONAGE_SESSION_ID to <repo-root>/.env
   ➜ Added VONAGE_SESSION_ID=2_MX... to your .env file
 
 ✓ Generated client token (publisher, 24 h)
