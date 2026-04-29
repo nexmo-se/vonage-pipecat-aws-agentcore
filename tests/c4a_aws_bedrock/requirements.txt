@@ -1,0 +1,6 @@
+boto3>=1.34.0
+loguru>=0.7.0
+python-dotenv>=1.2.2
+pipecat-ai[silero,webrtc,vonage-video-connector] @ git+https://github.com/Vonage/pipecat.git
+vonage>=4.8.0
+websockets>=15.0.0

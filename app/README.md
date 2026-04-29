@@ -67,7 +67,7 @@ Vonage Video Platform
 
 - Docker + Docker Compose (macOS / non-Linux)
   **or** Python 3.13.x with uv (native Linux)
-- All credentials in the root `.env` file (stages `C1`, `C2`, `C3`, `C4a`, `C4`, and `C5` passed)
+- All credentials in the root `.env` file (stages `C1`, `C2`, `C3`, `C4a`, `C4b`, and `C5` passed)
 
 ---
 

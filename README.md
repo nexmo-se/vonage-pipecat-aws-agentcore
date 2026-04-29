@@ -42,7 +42,7 @@ These two AWS services are complementary, not duplicates.
 
 How they work together in this repository:
 
-1. **Bedrock (C4)** provides live model capabilities during conversation.
+1. **Bedrock (C4b)** provides live model capabilities during conversation.
 2. **AgentCore (C5)** provides managed, deployable agent logic.
 3. In `app/`, AgentCore can be invoked at session start (when `AGENTCORE_AGENT_ARN` is set) to prime behavior, while Bedrock/Nova handles live inference.
 
@@ -122,7 +122,7 @@ The validation flow in `tests/` intentionally decomposes the stack so you can pr
 
 ## Test Components & Validation Path
 
-The repository includes six modular validation stages (`C1`, `C2`, `C3`, `C4a`, `C4`, `C5`) that validate each layer of the stack in isolation before combining them in `app/`. Run them in order to build confidence in the full integration.
+The repository includes six modular validation stages (`C1`, `C2`, `C3`, `C4a`, `C4b`, `C5`) that validate each layer of the stack in isolation before combining them in `app/`. Run them in order to build confidence in the full integration.
 
 ### C1: Vonage Video Session Creation
 
@@ -188,7 +188,7 @@ The repository includes six modular validation stages (`C1`, `C2`, `C3`, `C4a`, 
 
 ---
 
-### C4: AWS Bedrock + Nova Sonic Integration
+### C4b: AWS Bedrock + Nova Sonic Integration
 
 **What it validates:** **AWS Bedrock LLM** and **Nova Sonic** speech-to-speech model integrated with the Vonage transport pipeline.
 
@@ -231,7 +231,7 @@ Once all staged tests pass:
 2. **C2** confirms the Video Connector SDK can join a session.
 3. **C3** confirms Pipecat transport and echo behavior.
 4. **C4a** confirms Bedrock credentials and baseline text inference.
-5. **C4** confirms Bedrock + Nova Sonic speech-to-speech inference.
+5. **C4b** confirms Bedrock + Nova Sonic speech-to-speech inference.
 6. **C5** confirms AgentCore runtime deployment and bootstrap capability.
 
 The `app/` folder combines all five pieces into a complete agent:
@@ -239,7 +239,7 @@ The `app/` folder combines all five pieces into a complete agent:
 - Uses the session from **C1**.
 - Joins via the connector from **C2**.
 - Orchestrates via Pipecat transport from **C3**.
-- Responds with AI speech via **C4** (Nova Sonic).
+- Responds with AI speech via **C4b** (Nova Sonic).
 - Optionally primes behavior via **C5** (AgentCore bootstrap).
 
 ---
@@ -410,7 +410,7 @@ Work through the tests in order to validate each layer of the stack before wirin
 | C2  | [tests/c2_video_connector_sdk](tests/c2_video_connector_sdk/README.md)   | Video Connector SDK joining as WebRTC participant | Linux / Docker |
 | C3  | [tests/c3_pipecat_transport](tests/c3_pipecat_transport/README.md)       | Pipecat echo bot over Vonage transport            | Linux / Docker |
 | C4a | [tests/c4a_aws_bedrock](tests/c4a_aws_bedrock/README.md)                 | Bedrock credential check + staged echo validation | Linux / Docker |
-| C4  | [tests/c4_bedrock_nova_sonic](tests/c4_bedrock_nova_sonic/README.md)     | AWS Bedrock + Nova Lite + Nova Sonic integration  | Linux / Docker |
+| C4b | [tests/c4b_bedrock_nova_sonic](tests/c4b_bedrock_nova_sonic/README.md)   | AWS Bedrock + Nova Sonic speech-to-speech         | Linux / Docker |
 | C5  | [tests/c5_agentcore](tests/c5_agentcore/README.md)                       | AgentCore Runtime deploy + invoke hello world     | Any            |
 
 ---
@@ -432,12 +432,12 @@ What to expect from the running app:
 
 - `GET /` returns `{"status": "ok"}` when the API is live.
 - `GET /status` shows whether the auto-join pipeline is running and connected.
-- On Docker, the app mounts `${HOME}/.aws` and `./private.key` automatically so it can reuse the same AWS profile and Vonage key material validated in C4/C5.
+- On Docker, the app mounts `${HOME}/.aws` and `./private.key` automatically so it can reuse the same AWS profile and Vonage key material validated in C4b/C5.
 
 Current runtime shape:
 
 - The FastAPI app auto-joins `VONAGE_SESSION_ID` on startup when it is present in `.env`.
-- The speech loop uses the same validated **Vonage Video Connector + Nova Sonic** path from C4.
+- The speech loop uses the same validated **Vonage Video Connector + Nova Sonic** path from C4b.
 - `AGENTCORE_AGENT_ARN` is used as an optional bootstrap step to shape the initial assistant behavior, not as a separate in-pipeline service hop.
 
 See [app/README.md](app/README.md) for full instructions.
@@ -507,7 +507,7 @@ vonage-pipecat-aws-agentcore/
 │   ├── c1_vonage_video_session/  # Vonage Video session + token
 │   ├── c2_video_connector_sdk/   # Video Connector SDK (Linux/Docker)
 │   ├── c3_pipecat_transport/     # Pipecat echo bot (Linux/Docker)
-│   ├── c4_bedrock_nova_sonic/    # Bedrock + Nova Lite + Nova Sonic
+│   ├── c4b_bedrock_nova_sonic/   # Bedrock + Nova Sonic speech-to-speech
 │   └── c5_agentcore/             # AgentCore Runtime
 ├── app/                          # Full integrated agent
 └── blog/                         # Blog post + images

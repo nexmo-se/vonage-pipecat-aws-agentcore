@@ -1,4 +1,5 @@
 pipecat-ai[silero,webrtc,vonage-video-connector] @ git+https://github.com/Vonage/pipecat.git
+loguru>=0.7.0
 vonage>=4.8.0
 vonage-video-connector>=1.0.0
 python-dotenv>=1.2.2

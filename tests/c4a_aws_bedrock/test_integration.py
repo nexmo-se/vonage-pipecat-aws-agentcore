@@ -39,7 +39,7 @@ except ImportError as e:
 
 aws_profile = os.getenv("AWS_PROFILE", "").strip()
 aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
-bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
+bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-sonic-v1:0").strip()
 
 # For validation test, use Nova Lite (text-only)
 # Stage 2 will use Nova Sonic (speech-to-speech) via bedrock_echo_agent.py
@@ -147,11 +147,11 @@ print("\n" + "=" * 70)
 print("NEXT STEPS: Run Stage 2 with Docker")
 print("=" * 70)
 print("""
-To run the full C4 Bedrock + Vonage integration test:
+To run the full C4a Bedrock + Vonage integration test:
 
 1. Build Docker image:
-   cd tests/c4_bedrock_nova_sonic
-   docker build -t c4-bedrock-nova-sonic .
+   cd tests/c4a_aws_bedrock
+   docker build -t c4a-bedrock .
 
 2. Run Bedrock echo agent in Docker:
    docker run --rm \\
@@ -160,7 +160,7 @@ To run the full C4 Bedrock + Vonage integration test:
      -v ~/.aws:/root/.aws \\
      -v "$(pwd)/../../.env:/workspace/.env:ro" \\
      -v "$(pwd)/../../private.key:/workspace/private.key:ro" \\
-     c4-bedrock-nova-sonic python bedrock_echo_agent.py
+     c4a-bedrock python bedrock_echo_agent.py
 
 3. Join Vonage Playground:
    https://tools.vonage.com/video/playground/

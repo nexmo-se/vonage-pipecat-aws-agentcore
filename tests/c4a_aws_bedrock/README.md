@@ -1,11 +1,11 @@
-# C4a — AWS Bedrock + Vonage Pipecat Transport Integration
+# C4a — AWS Bedrock Credentials + Vonage Transport Connectivity
 
-Two-stage test that validates AWS Bedrock integration with the Vonage Video transport (building on C3):
+Two-stage test that validates the AWS and Vonage layers separately before combining them with Nova Sonic in C4b:
 
-**Stage 1:** Verify AWS Bedrock credentials and Nova Lite text model access (prerequisite for Stage 2)  
-**Stage 2:** Integrate AWS Bedrock LLM with Vonage Pipecat transport for end-to-end session validation
+**Stage 1:** Verify AWS Bedrock credentials and Nova Lite text model access (pure credential check, no transport)  
+**Stage 2:** Verify Vonage transport session connectivity in the Bedrock-configured Docker environment (pure audio echo, no LLM invocation)
 
-This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API access and Vonage session lifecycle with external AI service.
+This paves the way for C4b by proving both layers independently: Bedrock credentials work (Stage 1) and the Vonage transport joins and routes audio correctly (Stage 2).
 
 **Platform:** Linux only (Bedrock echo agent). Run via Docker on macOS — see setup below.
 
@@ -18,8 +18,7 @@ This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API 
 - Vonage Video API credentials (from C1) with active session ID
 - **Model Access Required:**
   - `amazon.nova-lite-v1:0` (for credential test in Stage 1)
-  - `amazon.nova-2-sonic-v1:0` (for echo agent in Stage 2)
-  - Enable models in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) — us-east-1 recommended
+  - Enable model access in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) — us-east-1 recommended
 
 ---
 
@@ -93,9 +92,11 @@ Test C4a PASSED ✓
 
 ---
 
-## Stage 2: Bedrock Echo Agent (Vonage Integration)
+## Stage 2: Transport Echo (Vonage Session Connectivity)
 
-Combines C3 Pipecat transport with AWS Bedrock LLM for end-to-end validation.
+Runs a Pipecat pipeline in the Bedrock-configured Docker environment to validate Vonage session join, participant lifecycle, and audio round-trip.
+
+**Pipeline:** `transport.input() → transport.output()` — audio is echoed directly back with no LLM processing. This is the same transport pattern as C3, but running inside the c4a Docker image that will be extended with Nova Sonic in C4b.
 
 ### File Overview
 
@@ -103,7 +104,7 @@ Combines C3 Pipecat transport with AWS Bedrock LLM for end-to-end validation.
 | ---------------------------------- | ------------------------------------------------------------------------- |
 | `test_bedrock.py`                  | Stage 1: AWS credential & model access verification                       |
 | `bedrock_transport_integration.py` | Bedrock client wrapper + LLM invocation helper classes                    |
-| `bedrock_echo_agent.py`            | Stage 2: Vonage transport + Bedrock LLM integration (echo bot)            |
+| `bedrock_echo_agent.py`            | Stage 2: Vonage transport echo (session join + audio round-trip, no LLM)  |
 | `Dockerfile`                       | Linux runtime: Python 3.13, git, system dependencies for Pipecat SDK      |
 | `requirements.txt`                 | Dependencies: boto3, Pipecat, Vonage Video SDK, python-dotenv, websockets |
 
@@ -117,19 +118,15 @@ VONAGE_APPLICATION_ID=<your-app-id>
 VONAGE_PRIVATE_KEY=private.key
 VONAGE_SESSION_ID=<session-from-c1>
 
-# AWS Bedrock
+# AWS credentials (profile recommended)
 AWS_PROFILE=vonage-dev            # or use AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 AWS_REGION=us-east-1
-BEDROCK_MODEL_ID=amazon.nova-2-sonic-v1:0
-BEDROCK_INITIAL_USER_MESSAGE=Please greet the participant briefly and ask how you can help.
 
-# Transport tuning (optional, defaults align with C3 best practices)
+# Transport tuning (optional)
 VONAGE_VIDEO_CONNECTOR_LOG_LEVEL=INFO
 VONAGE_MONITOR_ENABLED=true
 VONAGE_MONITOR_INTERVAL_SECONDS=15
 ```
-
-Set `BEDROCK_INITIAL_USER_MESSAGE=` (empty) to disable the initial greeting.
 
 ### Run Stage 2
 
@@ -165,7 +162,6 @@ rm -f c4a-bedrock-echo.log
 docker run --rm \
   -e AWS_PROFILE=vonage-dev \
   -e AWS_REGION=us-east-1 \
-  -e BEDROCK_MODEL_ID=amazon.nova-2-sonic-v1:0 \
   -e VONAGE_MONITOR_ENABLED=true \
   -e VONAGE_MONITOR_INTERVAL_SECONDS=10 \
   -v ~/.aws:/root/.aws:ro \
@@ -177,76 +173,78 @@ docker run --rm \
 
 Then in Vonage Playground:
 
-1. Join using the same session ID from `.env`
-2. Publish mic/audio
-3. Speak for 10-20 seconds
-4. Confirm you hear assistant audio
-5. Press Ctrl+C to stop the agent
+1. Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
+2. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
+3. Join the existing session using `VONAGE_SESSION_ID` from `.env`
+4. Publish mic/audio
+5. Speak — you should hear your own audio echoed back within ~1 second
+6. Press Ctrl+C to stop the agent
 
 ### Expected Runtime Output (Stage 2)
 
 ```text
-Initializing Nova Sonic (amazon.nova-2-sonic-v1:0) in us-east-1…
+Initializing Bedrock LLM (amazon.nova-2-sonic-v1:0) in us-east-1…
 Initialising Vonage Pipecat transport for session 2_MX...…
 ✓ Connected to Vonage Video session 2_MX...
-✓ Nova Sonic (amazon.nova-2-sonic-v1:0) ready for participant interactions
+✓ Bedrock LLM (amazon.nova-2-sonic-v1:0) ready for participant interactions
 
-Pipecat pipeline with Nova Sonic running — speak into your browser microphone
-  Audio received → Nova Sonic processes → spoken response published back
-  Transport config: log_level=INFO, audio_in=true, audio_out=true, …
-  AI config: model=amazon.nova-2-sonic-v1:0, region=us-east-1
+Pipecat transport echo running — speak into your browser microphone
+  Audio received → echoed back directly (no LLM — transport connectivity test)
+  Transport config: log_level=INFO, audio_in=True, audio_out=True, …
+  Env: model=amazon.nova-2-sonic-v1:0, region=us-east-1 (model unused in Stage 2)
 Press Ctrl+C to stop.
 ```
 
+> Note: The pipeline is `transport.input() → transport.output()`. Audio is echoed back directly — no Bedrock model inference occurs during Stage 2. LLM inference is added in C4b.
+
 ### End-to-End Validation Workflow
 
-Same workflow as C3, with LLM processing:
+Same workflow as C3 — this is a transport echo with no LLM processing:
 
 1. **Start C4a agent** (Docker or native)
 2. **Join [Vonage Playground](https://tokbox.com/developer/tools/playground/)**
-   - Use the same session ID from `.env`
+   - Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
+   - Use `VONAGE_SESSION_ID` from `.env`
    - Enable camera + microphone
-3. **Publish video/audio**
-4. **Speak into microphone** (text will be processed through Bedrock LLM)
-5. **Wait 5-10 seconds** for LLM response + echo
-6. **Unpublish, then disconnect** from Playground
-7. **Stop agent** (Ctrl+C)
-8. **Verify logs** for success signals (see below)
+3. **Publish audio**
+4. **Speak into microphone** — audio is echoed back directly (no LLM, ~1 s round-trip)
+5. **Unpublish, then disconnect** from Playground
+6. **Stop agent** (Ctrl+C)
+7. **Verify logs** for success signals (see below)
 
 ### Verify Success from Logs
 
 ```bash
 # Check key markers from the latest run
-grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4a-bedrock-echo.log
+grep -a -n -E "Connected to Vonage|Bedrock LLM.*ready|Participant joined|Client connected|monitor: active_streams|ERROR|Exception" c4a-bedrock-echo.log
 
 # If your log includes binary segments, use strings extraction first
-strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
+strings -n 4 c4a-bedrock-echo.log | grep -n -E "Connected to Vonage|Bedrock LLM.*ready|Participant joined|Client connected|monitor: active_streams|ERROR|Exception"
 ```
 
 ### Success Checklist
 
 - [ ] Agent connects to Vonage session (logs: "Connected to Vonage Video session")
-- [ ] Nova Sonic initialized (logs: "Nova Sonic (...) ready")
-- [ ] Participant joins from Playground (logs: "Participant joined")
-- [ ] Client connects (logs: "Client connected")
+- [ ] Bedrock LLM initialized (logs: "Bedrock LLM (...) ready for participant interactions")
+- [ ] Participant joins from Playground (logs: "Participant joined with stream")
+- [ ] Client connects (logs: "Client connected to stream")
 - [ ] Monitor shows active_streams > 0 (logs: "monitor: active_streams=1")
-- [ ] Participant speaks → assistant audio returns (audio loop confirmed)
-- [ ] Client disconnects (logs: "Client disconnected")
-- [ ] Participant leaves (logs: "Participant left")
+- [ ] Participant speaks → audio echoed back within ~1 second (no LLM delay)
+- [ ] Client disconnects (logs: "Client disconnected from stream")
+- [ ] Participant leaves (logs: "Participant left stream")
 - [ ] Agent stops cleanly (Ctrl+C → "Test C4a Bedrock integration complete ✓")
 
 ---
 
 ## What This Stage Adds
 
-| Component            | Purpose                                                                |
-| -------------------- | ---------------------------------------------------------------------- |
-| **Bedrock API**      | LLM invocation via AWS Bedrock Nova Sonic (same model as C5 AgentCore) |
-| **Vonage Transport** | Session join + participant lifecycle (same as C3)                      |
-| **Event handlers**   | Client connect/disconnect, participant join/leave tracking             |
-| **Monitor loop**     | Periodic snapshots of active streams, subscribers, event counters      |
-| **Async pipeline**   | PipelineRunner coordination with LLM invocation in parallel            |
-| **Error handling**   | Transport + Bedrock error recovery, graceful shutdown                  |
+| Component            | Purpose                                                                    |
+| -------------------- | -------------------------------------------------------------------------- |
+| **Vonage Transport** | Session join + participant lifecycle in the Bedrock-configured environment |
+| **Audio echo**       | `transport.input() → transport.output()` — confirms audio round-trip works |
+| **Event handlers**   | Client connect/disconnect, participant join/leave tracking                 |
+| **Monitor loop**     | Periodic snapshots of active streams, subscribers, event counters          |
+| **Error handling**   | Transport error recovery, graceful shutdown on Ctrl+C                      |
 
 ---
 
@@ -266,7 +264,7 @@ strings -n 4 c4a-bedrock-echo.log | grep -n -E "Seeding initial Nova Sonic conte
 
 ## Next Steps
 
-- **C4:** Run the integrated Bedrock + Nova Sonic + Vonage transport test in `tests/c4_bedrock_nova_sonic`
+- **C4b:** Run the integrated Bedrock + Nova Sonic + Vonage transport test in `tests/c4b_bedrock_nova_sonic`
 - **C5:** Full AgentCore integration with Bedrock + Vonage transport for multi-turn context
 - **Monitoring:** Extend C4a to log all Bedrock invocations (prompts, responses, latency) for observability
 

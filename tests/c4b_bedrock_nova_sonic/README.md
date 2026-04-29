@@ -1,4 +1,4 @@
-# C4 — AWS Bedrock + Nova Sonic + Vonage Pipecat Transport Integration
+# C4b — AWS Bedrock + Nova Sonic + Vonage Pipecat Transport Integration
 
 Two-stage test that validates AWS Bedrock integration with the Vonage Video transport (building on C3):
 
@@ -32,18 +32,18 @@ In this project:
 
 ## Bedrock vs AgentCore (Why Both?)
 
-C4 focuses on **Bedrock model inference**, not AgentCore runtime hosting.
+C4b focuses on **Bedrock model inference**, not AgentCore runtime hosting.
 
-- **Bedrock in C4:** verifies credentials, model access, and live inference behavior.
+- **Bedrock in C4b:** verifies credentials, model access, and live inference behavior.
 - **AgentCore in C5:** verifies deployable runtime logic (configure/deploy/invoke) and optional bootstrap integration.
 
-If C4 passes, your model layer is working. If C5 passes, your managed runtime layer is working.
+If C4b passes, your model layer is working. If C5 passes, your managed runtime layer is working.
 
 Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
 
 ## Purpose
 
-This C4 test validates that:
+This C4b test validates that:
 
 - AWS Bedrock credentials are correctly configured.
 - Nova Sonic models are available and accessible.
@@ -74,10 +74,10 @@ When complete, you can ask the agent a question in the Vonage Playground, and it
 ### macOS (Docker)
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4b_bedrock_nova_sonic
 
 # Build Dockerfile (includes git for Pipecat source install, Python 3.13, boto3, Vonage SDK)
-docker build -t c4-bedrock-nova-sonic .
+docker build -t c4b-bedrock-nova-sonic .
 
 # Ensure root .env has AWS_PROFILE set
 # (or AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY for explicit credentials)
@@ -86,7 +86,7 @@ docker build -t c4-bedrock-nova-sonic .
 ### Native Linux
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4b_bedrock_nova_sonic
 
 python -m venv .venv
 source .venv/bin/activate
@@ -108,7 +108,7 @@ docker run --rm -e AWS_PROFILE=vonage-dev \
   -e AWS_REGION=us-east-1 \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
-  c4-bedrock-nova-sonic python test_bedrock.py
+  c4b-bedrock-nova-sonic python test_bedrock.py
 
 # Native Linux
 source .venv/bin/activate
@@ -126,7 +126,7 @@ Sending test prompt: "Say hello in exactly one sentence."
 ✓ Response received:
   Hello! I'm Nova Lite, an AI assistant — how can I help you today?
 
-Test C4 PASSED ✓
+Test C4b PASSED ✓
 ```
 
 ### What It Tests
@@ -187,7 +187,7 @@ docker run --rm \
   -v ~/.aws:/root/.aws \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
-  c4-bedrock-nova-sonic python bedrock_echo_agent.py
+  c4b-bedrock-nova-sonic python bedrock_echo_agent.py
 
 # Native Linux (assumes VONAGE_SESSION_ID is set in root .env)
 source .venv/bin/activate
@@ -199,13 +199,13 @@ python bedrock_echo_agent.py
 Use this exact flow for reproducible results:
 
 ```bash
-cd tests/c4_bedrock_nova_sonic
+cd tests/c4b_bedrock_nova_sonic
 
 # 1) Build latest image
-docker build -t c4-bedrock-nova-sonic .
+docker build -t c4b-bedrock-nova-sonic .
 
 # 2) Clear previous log
-rm -f c4-bedrock-nova-sonic-echo.log
+rm -f c4b-bedrock-nova-sonic-echo.log
 
 # 3) Start agent and capture output
 docker run --rm \
@@ -218,7 +218,7 @@ docker run --rm \
   -v "$(pwd)/../../.env:/workspace/.env:ro" \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
   -v "$(pwd)/logs:/app/logs" \
-  c4-bedrock-nova-sonic python bedrock_echo_agent.py 2>&1 | tee c4-bedrock-nova-sonic-echo.log
+  c4b-bedrock-nova-sonic python bedrock_echo_agent.py 2>&1 | tee c4b-bedrock-nova-sonic-echo.log
 ```
 
 Then in Vonage Playground:
@@ -250,7 +250,7 @@ Press Ctrl+C to stop.
 
 Same workflow as C3, with LLM processing:
 
-1. **Start C4 agent** (Docker or native)
+1. **Start C4b agent** (Docker or native)
 2. **Join [Vonage Playground](https://tokbox.com/developer/tools/playground/)**
 
 - Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
@@ -268,10 +268,10 @@ Same workflow as C3, with LLM processing:
 
 ```bash
 # Check key markers from the latest run
-grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4-bedrock-nova-sonic-echo.log
+grep -a -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception" c4b-bedrock-nova-sonic-echo.log
 
 # If your log includes binary segments, use strings extraction first
-strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
+strings -n 4 c4b-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova Sonic context|Finishing connecting|on_client_connected|ERROR|Exception"
 ```
 
 ### Success Checklist
@@ -284,7 +284,7 @@ strings -n 4 c4-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova S
 - [ ] Participant speaks → assistant audio returns (audio loop confirmed)
 - [ ] Client disconnects (logs: "Client disconnected")
 - [ ] Participant leaves (logs: "Participant left")
-- [ ] Agent stops cleanly (Ctrl+C → "Test C4 Bedrock integration complete ✓")
+- [ ] Agent stops cleanly (Ctrl+C → "Test C4b Bedrock integration complete ✓")
 
 ---
 

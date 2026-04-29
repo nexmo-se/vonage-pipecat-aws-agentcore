@@ -23,7 +23,7 @@ These are different layers of the stack:
 
 In this repository:
 
-1. C4 proves Bedrock model inference for live speech/text responses.
+1. C4b proves Bedrock model inference for live speech/text responses.
 2. C5 proves AgentCore runtime deployment and invocation.
 3. In the full app, AgentCore can optionally provide bootstrap instructions/persona, while Bedrock powers live conversational inference.
 
@@ -197,11 +197,11 @@ AWS_PROFILE=vonage-dev uv run python test_agentcore.py
 Expected success lines:
 
 ```text
-Using existing runtime: arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-<runtime-id>
+✓ Using existing runtime: arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-<runtime-id>
 Invoking agent with: "Say hello world"
-Agent response:
-  "Hello, Say hello world! AgentCore is working."
-Test C5 PASSED
+✓ Agent response:
+  Hello, Say hello world! AgentCore is working.
+Test C5 PASSED ✓
 ```
 
 ## Common Failure

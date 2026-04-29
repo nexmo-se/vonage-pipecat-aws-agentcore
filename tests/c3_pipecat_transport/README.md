@@ -15,14 +15,11 @@ Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage
 - **Built-in processors:** VAD (voice activity detection), STT, TTS, LLM integration.
 - **Real-time coordination:** Handles frame timing, buffering, and synchronization at low latency.
 
-In this project, Pipecat orchestrates the real-time conversation loop:
+In this C3 test, Pipecat orchestrates a transport echo loop:
 
 1. Receives audio frames from Vonage Video Connector transport.
-2. Detects speech (VAD).
-3. Transcribes to text (STT via Nova Sonic).
-4. Processes with LLM (via AgentCore or direct Bedrock).
-5. Generates response audio (TTS via Nova Sonic).
-6. Sends frames back to Vonage.
+2. Routes frames through the Pipecat passthrough pipeline.
+3. Sends the same audio frames back to Vonage.
 
 ## Purpose
 
@@ -116,6 +113,7 @@ Successful runs should show:
 - Participant joined/left lines
 - Client connected/disconnected lines
 - Monitor lines where counters increase and later return to zero after disconnect
+- Startup transport config line (log level, media flags, monitor/manual-subscribe settings)
 
 ## Setup (native Linux)
 
