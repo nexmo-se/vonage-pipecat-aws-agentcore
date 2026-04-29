@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-C4a Integration Test: Bedrock + Vonage Transport Validation
+C4b Integration Test: Bedrock + Vonage Transport Validation
 
 This test verifies that:
 1. AWS Bedrock credentials are accessible
@@ -23,7 +23,7 @@ repo_root = Path(__file__).resolve().parents[2]
 load_dotenv(repo_root / ".env")
 
 print("=" * 70)
-print("C4a Integration Test: Bedrock + Vonage Transport Setup Validation")
+print("C4b Integration Test: Bedrock + Vonage Transport Setup Validation")
 print("=" * 70)
 
 # ── Stage 1: Bedrock Credentials Test ─────────────────────────────
@@ -169,9 +169,9 @@ To run the full C4b Bedrock + Vonage integration test:
 4. Publish audio → speak → wait for LLM echo → disconnect
 
 5. Verify logs for success markers:
-   grep "Connected to Vonage Video" logs/c4a-bedrock-echo.log
-   grep "Bedrock LLM ready" logs/c4a-bedrock-echo.log
-   grep "Participant joined" logs/c4a-bedrock-echo.log
+    grep "Connected to Vonage Video" logs/c4b-bedrock-nova-sonic-echo.log
+    grep "Nova Sonic" logs/c4b-bedrock-nova-sonic-echo.log
+    grep "Participant joined" logs/c4b-bedrock-nova-sonic-echo.log
 """)
 
-print("\nC4a Integration Test PASSED ✓\n")
+print("\nC4b Integration Test PASSED ✓\n")

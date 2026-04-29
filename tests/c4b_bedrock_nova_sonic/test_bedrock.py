@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test C4a: AWS Bedrock — Credentials + Nova Lite Text Conversation
+Test C4b: AWS Bedrock — Credentials + Nova Lite Text Conversation
 
 Verifies:
   1. AWS credentials are correctly configured
@@ -123,7 +123,7 @@ def main() -> None:
             print(f"ERROR calling Bedrock: {e}")
         sys.exit(1)
 
-    print("\nTest C4a PASSED ✓")
+    print("\nTest C4b PASSED ✓")
 
 
 if __name__ == "__main__":

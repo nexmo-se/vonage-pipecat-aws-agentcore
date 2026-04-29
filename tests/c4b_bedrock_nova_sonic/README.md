@@ -319,7 +319,7 @@ strings -n 4 c4b-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova 
 
 - **C5:** Validate AgentCore runtime deployment and invocation against this transport path
 - **App:** Run full app integration with Bedrock + Vonage transport + optional AgentCore bootstrap
-- **Monitoring:** Extend C4a to log all Bedrock invocations (prompts, responses, latency) for observability
+- **Monitoring:** Extend C4b to log all Bedrock invocations (prompts, responses, latency) for observability
 
 ---
 

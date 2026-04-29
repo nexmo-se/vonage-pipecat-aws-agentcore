@@ -21,5 +21,5 @@ COPY bedrock_transport_integration.py .
 COPY bedrock_echo_agent.py .
 
 # Default command: credential test (Stage 1)
-# Override with: docker run c4a-bedrock python bedrock_echo_agent.py (for Stage 2)
+# Override with: docker run c4b-bedrock-nova-sonic python bedrock_echo_agent.py (for Stage 2)
 CMD ["python", "test_bedrock.py"]

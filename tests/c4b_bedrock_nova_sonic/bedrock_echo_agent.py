@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test C4a: AWS Bedrock + Vonage Pipecat Transport — Echo Agent
+Test C4b: AWS Bedrock + Vonage Pipecat Transport — Echo Agent
 
 Runs a Pipecat pipeline that:
     1. Joins the Vonage Video session (same as C3)
@@ -410,4 +410,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(run_bedrock_echo_agent())
     except KeyboardInterrupt:
-        print("\nStopped by user. Test C4a Bedrock integration complete ✓")
+        print("\nStopped by user. Test C4b Bedrock integration complete ✓")
