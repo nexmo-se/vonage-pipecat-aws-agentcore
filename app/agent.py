@@ -75,7 +75,9 @@ class VonagePipecatAgent:
 
         if self._pipeline_task is not None:
             try:
-                self._pipeline_task.cancel()
+                cancel_result = self._pipeline_task.cancel()
+                if inspect.isawaitable(cancel_result):
+                    await cancel_result
             except Exception:
                 pass
 
@@ -348,7 +350,6 @@ class VonagePipecatAgent:
             self.connected = True
             logger.info("Joined session", session_id=data.get("sessionId"), model=bedrock_model_id)
             await self._emit({"event": "joined", "session_id": data.get("sessionId")})
-            await seed_initial_context("on_joined")
 
         @transport.event_handler("on_participant_joined")
         async def on_participant_joined(_transport, data):

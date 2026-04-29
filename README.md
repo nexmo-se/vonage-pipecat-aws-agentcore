@@ -432,6 +432,7 @@ What to expect from the running app:
 
 - `GET /` returns `{"status": "ok"}` when the API is live.
 - `GET /status` shows whether the auto-join pipeline is running and connected.
+- A normal fresh startup can report `running: true` with `connected: false` until a participant/client joins; `last_error` should remain `null`.
 - On Docker, the app mounts `${HOME}/.aws` and `./private.key` automatically so it can reuse the same AWS profile and Vonage key material validated in C4b/C5.
 
 Current runtime shape:

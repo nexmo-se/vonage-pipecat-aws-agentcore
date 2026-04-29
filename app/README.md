@@ -95,7 +95,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ## Runtime Notes
 
 - When `VONAGE_SESSION_ID` is set, the app auto-joins that session on startup.
-- `GET /status` is the quickest health check for the live agent pipeline. A healthy startup should eventually show `running: true`, `connected: true`, and `last_error: null`.
+- `GET /status` is the quickest health check for the live agent pipeline. A healthy startup should show `running: true` and `last_error: null`.
+- `connected` may remain `false` until a participant/client actually joins the Vonage session, then transitions to `true`.
 - In Docker, the compose service mounts `${HOME}/.aws` to `/root/.aws` and `./private.key` to `/app/private.key`, so the app can reuse the AWS profile and Vonage key material already validated in the test folders.
 - If you want to stop the live pipeline without stopping the API process, call `POST /leave`.
 
