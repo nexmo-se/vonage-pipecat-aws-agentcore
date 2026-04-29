@@ -496,6 +496,23 @@ docker compose --profile app logs -f app
 docker compose --profile app down --remove-orphans
 ```
 
+### Acceptance Evidence (April 2026)
+
+Use this quick check after a Playground join/leave cycle to confirm app health and clean logs:
+
+```bash
+cd /path/to/vonage-pipecat-aws-agentcore
+curl -s http://localhost:8000/status
+docker compose --profile app logs --tail=300 app | \
+grep -E "participant_joined|client_connected|client_disconnected|participant_left|Monitor snapshot|ERROR|Exception|Traceback|RuntimeWarning|Timed out waiting for input events|was never awaited|connection reset by peer"
+```
+
+Expected result:
+
+- `running: true`, `last_error: null`, and `event_counts.errors: 0` in `/status`.
+- Join/leave counters increment during the Playground session.
+- No `ERROR`/`Exception`/`Traceback`/`RuntimeWarning` timeout or await-warning matches in filtered logs.
+
 ---
 
 ## Repository Layout
