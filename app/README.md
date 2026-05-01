@@ -92,6 +92,39 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+## Deploy to Production
+
+`docker compose` is the local/dev path. For production, deploy this app on Linux infrastructure.
+
+Recommended targets:
+
+- **EC2 (single host)**: fastest path from POC to first production deployment.
+- **Managed containers**: ECS/Fargate (or EKS/App Runner) for rolling deployments, autoscaling, and managed operations.
+
+### Production Responsibilities (AWS)
+
+- **Amazon Bedrock**: model inference platform.
+- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
+- **Amazon Bedrock AgentCore Runtime**: optional managed runtime bootstrap path in this sample.
+
+Use the correct AWS API surface per call path:
+
+- `bedrock` for control plane model operations ([AWS Bedrock API methods](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html))
+- `bedrock-runtime` for inference data plane calls ([AWS Bedrock Runtime examples](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModel_AnthropicClaude_section.html))
+- `bedrock-agentcore` for AgentCore runtime invocation ([AWS Bedrock AgentCore Data Plane API](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html))
+
+### Minimum Production Checklist
+
+- **Linux runtime**: deploy on Linux (native or container) for Video Connector compatibility.
+- **Credentials**: use IAM roles or short-lived credentials; avoid long-lived static keys ([IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)).
+- **Least privilege**: scope Bedrock, AgentCore, logs, and secrets permissions to only required actions/resources.
+- **Secrets management**: store secrets in AWS Secrets Manager or SSM Parameter Store (not plaintext `.env` in images/repos).
+- **Model/region readiness**: verify model ID support and quotas in target region before rollout ([Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)).
+- **Observability**: collect CloudWatch metrics/logs and enable CloudTrail for API auditing ([Bedrock monitoring](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html), [Bedrock CloudTrail](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html)).
+- **Retries/timeouts**: tune SDK retries/timeouts for voice latency and resilience ([AWS SDK retry behavior](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)).
+- **Container security**: apply ECS/Fargate security best practices when containerized ([ECS security best practices](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security-best-practices.html)).
+- **Session lifecycle**: monitor and tune `NOVA_SESSION_WARN_SECONDS`, `NOVA_SESSION_LIMIT_SECONDS`, and `NOVA_SESSION_STOP_ON_LIMIT` for long-lived calls.
+
 ## Runtime Notes
 
 - When `VONAGE_SESSION_ID` is set, the app auto-joins that session on startup.

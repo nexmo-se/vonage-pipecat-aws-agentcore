@@ -31,9 +31,9 @@ Core building blocks:
 | **Amazon Nova Sonic**          | Low-latency speech-to-speech intelligence    |
 | **Amazon Bedrock AgentCore**   | Managed runtime for deployable agent logic   |
 
-## Bedrock vs AgentCore (Why Both?)
+## Bedrock and AgentCore
 
-These two AWS services are complementary, not duplicates.
+These two AWS services are complementary.
 
 | Layer                           | Service                      | What it does in this project                                                                      |
 | ------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -443,6 +443,37 @@ Current runtime shape:
 - The app monitor emits `session_renewal_recommended` before the Nova Sonic connection window expires so you can refresh with `POST /leave` then `POST /join`.
 
 See [app/README.md](app/README.md) for full instructions.
+
+## Production Deployment
+
+Use `docker compose` for local validation only. For production, deploy on Linux infrastructure:
+
+- **Fastest path**: EC2/Linux VM running this app as a service or container.
+- **Recommended at scale**: ECS/Fargate (or EKS/App Runner) with CI/CD image deploys.
+
+Production responsibility split:
+
+- **Amazon Bedrock**: model inference platform.
+- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
+- **Amazon Bedrock AgentCore Runtime**: optional managed bootstrap/runtime logic.
+
+Minimum production controls:
+
+- Use role-based IAM or temporary credentials (avoid long-lived static keys).
+- Keep least-privilege permissions for Bedrock, AgentCore, logging, and secrets.
+- Verify model IDs/region support and quotas before rollout.
+- Enable CloudWatch metrics/logs and CloudTrail auditing.
+
+Detailed deployment runbook: [app/README.md](app/README.md#deploy-to-production)
+
+AWS references:
+
+- [Amazon Bedrock API methods](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html)
+- [Amazon Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
+- [Amazon Bedrock monitoring](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html)
+- [Amazon Bedrock CloudTrail logging](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html)
+- [Amazon Bedrock AgentCore security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)
+- [AWS IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
 
 ### Ground-Up Validation Flow (Clean Restart)
 
