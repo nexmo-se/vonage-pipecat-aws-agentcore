@@ -24,12 +24,38 @@ NOVA_LITE_MODEL_ID = "amazon.nova-lite-v1:0"
 TEST_PROMPT = "Say hello in exactly one sentence."
 
 
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _extract_reply_text(result: dict) -> str:
+    content = result.get("output", {}).get("message", {}).get("content", [])
+    if isinstance(content, list):
+        for item in content:
+            text = item.get("text") if isinstance(item, dict) else None
+            if text:
+                return text
+    fallback_text = result.get("outputText")
+    if isinstance(fallback_text, str) and fallback_text.strip():
+        return fallback_text
+    raise ValueError(f"Unexpected Bedrock response format: {result}")
+
+
 def main() -> None:
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
     aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
     aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
+    bedrock_connect_timeout_seconds = _env_int("BEDROCK_CONNECT_TIMEOUT_SECONDS", 10)
+    bedrock_read_timeout_seconds = _env_int("BEDROCK_READ_TIMEOUT_SECONDS", 60)
+    bedrock_max_attempts = _env_int("BEDROCK_MAX_ATTEMPTS", 4)
 
     # ── Resolve credential source ─────────────────────────────────
     has_explicit_env_creds = bool(aws_access_key and aws_secret_key)
@@ -43,6 +69,7 @@ def main() -> None:
     # ── Initialise Bedrock client ─────────────────────────────────
     try:
         import boto3
+        from botocore.config import Config
         from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
@@ -62,8 +89,15 @@ def main() -> None:
         else:
             session = boto3.Session(region_name=aws_region)
 
-        bedrock = session.client("bedrock")
-        bedrock_runtime = session.client("bedrock-runtime")
+        client_config = Config(
+            retries={"max_attempts": max(1, bedrock_max_attempts), "mode": "standard"},
+            connect_timeout=max(1, bedrock_connect_timeout_seconds),
+            read_timeout=max(1, bedrock_read_timeout_seconds),
+            user_agent_extra="vonage-pipecat-aws-agentcore-tests/c4b-bedrock",
+        )
+
+        bedrock = session.client("bedrock", config=client_config)
+        bedrock_runtime = session.client("bedrock-runtime", config=client_config)
     except (NoCredentialsError, ProfileNotFound):
         print("ERROR: AWS credentials are invalid or missing")
         sys.exit(1)
@@ -110,7 +144,7 @@ def main() -> None:
             accept="application/json",
         )
         result = json.loads(response["body"].read())
-        reply = result["output"]["message"]["content"][0]["text"]
+        reply = _extract_reply_text(result)
         print(f"✓ Response received:\n  {reply}")
     except ClientError as e:
         code = e.response["Error"]["Code"]

@@ -113,6 +113,8 @@ class VonagePipecatAgent:
 
         try:
             import boto3
+            from botocore.config import Config
+            from botocore.exceptions import ClientError
             from vonage import Auth, Vonage
             from vonage_video import TokenOptions
             from pipecat.frames.frames import LLMContextFrame
@@ -174,6 +176,11 @@ class VonagePipecatAgent:
             await self._emit({"event": "agent_error", "error": self.last_error})
             return
 
+        bedrock_connect_timeout_seconds = env_int("BEDROCK_CONNECT_TIMEOUT_SECONDS", 10)
+        bedrock_read_timeout_seconds = env_int("BEDROCK_READ_TIMEOUT_SECONDS", 60)
+        bedrock_max_attempts = env_int("BEDROCK_MAX_ATTEMPTS", 4)
+        bedrock_validate_model_id = env_bool("BEDROCK_VALIDATE_MODEL_ID", True)
+
         session_kwargs: dict[str, Any] = {"region_name": aws_region}
         if aws_profile:
             session_kwargs["profile_name"] = aws_profile
@@ -183,12 +190,49 @@ class VonagePipecatAgent:
             if credentials is None:
                 raise RuntimeError("boto3 could not resolve AWS credentials")
             frozen_credentials = credentials.get_frozen_credentials()
-            agentcore_client = aws_session.client("bedrock-agentcore") if agentcore_runtime_arn else None
+            aws_client_config = Config(
+                retries={"max_attempts": max(1, bedrock_max_attempts), "mode": "standard"},
+                connect_timeout=max(1, bedrock_connect_timeout_seconds),
+                read_timeout=max(1, bedrock_read_timeout_seconds),
+                user_agent_extra="vonage-pipecat-aws-agentcore-app/0.1",
+            )
+            agentcore_client = (
+                aws_session.client("bedrock-agentcore", config=aws_client_config)
+                if agentcore_runtime_arn
+                else None
+            )
         except Exception as exc:
             self.last_error = f"unable to resolve AWS credentials: {exc}"
             logger.error("AWS credential resolution failed", error=str(exc))
             await self._emit({"event": "agent_error", "error": self.last_error})
             return
+
+        if bedrock_validate_model_id:
+            try:
+                bedrock_client = aws_session.client("bedrock", config=aws_client_config)
+                bedrock_client.get_foundation_model(modelIdentifier=bedrock_model_id)
+                logger.info("Bedrock model validation passed", model=bedrock_model_id, region=aws_region)
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code", "Unknown")
+                # Fail fast only for clearly invalid model IDs; permission errors remain non-fatal.
+                if error_code in {"ValidationException", "ResourceNotFoundException"}:
+                    self.last_error = (
+                        f"invalid BEDROCK_MODEL_ID '{bedrock_model_id}' for region {aws_region}: {error_code}"
+                    )
+                    logger.error(
+                        "Bedrock model validation failed",
+                        model=bedrock_model_id,
+                        region=aws_region,
+                        code=error_code,
+                    )
+                    await self._emit({"event": "agent_error", "error": self.last_error})
+                    return
+                logger.warning(
+                    "Bedrock model validation skipped due to API permissions or transient error",
+                    model=bedrock_model_id,
+                    region=aws_region,
+                    code=error_code,
+                )
 
         # Optional transport tuning from the C3/C4 test flow.
         video_connector_log_level = os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO").strip() or "INFO"
@@ -384,7 +428,6 @@ class VonagePipecatAgent:
                             "recommended_action": "Call POST /leave then POST /join to refresh session",
                         }
                     )
-
                 if (
                     nova_stop_on_limit
                     and not renewal_stop_triggered

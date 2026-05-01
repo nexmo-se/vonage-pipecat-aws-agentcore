@@ -545,6 +545,14 @@ This project intentionally cites Vonage-authored documentation as the primary so
 - [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
 - [Vonage Voice API overview (Phase 2 Serializer/Voice scope)](https://developer.vonage.com/en/voice/overview)
 
+## Official AWS Bedrock and Nova References
+
+Keep this minimal set for setup, API behavior, and model selection:
+
+- [Amazon Bedrock API reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/welcome.html)
+- [Amazon Nova Sonic getting started](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-getting-started.html)
+- [Amazon Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
+
 ---
 
 ## License

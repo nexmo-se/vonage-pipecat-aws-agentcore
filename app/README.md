@@ -177,21 +177,25 @@ docker compose --profile app down --remove-orphans
 
 All variables are loaded from the root `.env` file (see `.env.example`):
 
-| Variable                     | Description                                                                        |
-| ---------------------------- | ---------------------------------------------------------------------------------- |
-| `VONAGE_APPLICATION_ID`      | Vonage Video API application ID                                                    |
-| `VONAGE_PRIVATE_KEY`         | Path to Vonage private key file                                                    |
-| `VONAGE_SESSION_ID`          | Vonage Video session to join on startup                                            |
-| `AWS_PROFILE`                | AWS CLI profile name (recommended, e.g. `vonage-dev`)                              |
-| `AWS_ACCESS_KEY_ID`          | AWS access key (optional fallback if not using profile)                            |
-| `AWS_SECRET_ACCESS_KEY`      | AWS secret key (optional fallback if not using profile)                            |
-| `AWS_REGION`                 | AWS region (default: `us-east-1`)                                                  |
-| `BEDROCK_MODEL_ID`           | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`)                          |
-| `AGENTCORE_AGENT_ARN`        | Optional AgentCore runtime ARN used for startup bootstrap                          |
-| `NOVA_SESSION_WARN_SECONDS`  | Emit renewal recommendation event after this many seconds (default: `410`)         |
-| `NOVA_SESSION_LIMIT_SECONDS` | Session limit threshold used by monitor telemetry (default: `470`)                 |
-| `NOVA_SESSION_STOP_ON_LIMIT` | When `true`, cancels the pipeline at the limit to force renewal (default: `false`) |
-| `PORT`                       | FastAPI port (default: `8000`)                                                     |
+| Variable                          | Description                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| `VONAGE_APPLICATION_ID`           | Vonage Video API application ID                                                    |
+| `VONAGE_PRIVATE_KEY`              | Path to Vonage private key file                                                    |
+| `VONAGE_SESSION_ID`               | Vonage Video session to join on startup                                            |
+| `AWS_PROFILE`                     | AWS CLI profile name (recommended, e.g. `vonage-dev`)                              |
+| `AWS_ACCESS_KEY_ID`               | AWS access key (optional fallback if not using profile)                            |
+| `AWS_SECRET_ACCESS_KEY`           | AWS secret key (optional fallback if not using profile)                            |
+| `AWS_REGION`                      | AWS region (default: `us-east-1`)                                                  |
+| `BEDROCK_MODEL_ID`                | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`)                          |
+| `BEDROCK_CONNECT_TIMEOUT_SECONDS` | Bedrock API connect timeout in seconds (default: `10`)                             |
+| `BEDROCK_READ_TIMEOUT_SECONDS`    | Bedrock API read timeout in seconds (default: `60`)                                |
+| `BEDROCK_MAX_ATTEMPTS`            | Bedrock API max retry attempts, standard mode (default: `4`)                       |
+| `BEDROCK_VALIDATE_MODEL_ID`       | Validate `BEDROCK_MODEL_ID` at startup; fail fast on invalid IDs (default: `true`) |
+| `AGENTCORE_AGENT_ARN`             | Optional AgentCore runtime ARN used for startup bootstrap                          |
+| `NOVA_SESSION_WARN_SECONDS`       | Emit renewal recommendation event after this many seconds (default: `410`)         |
+| `NOVA_SESSION_LIMIT_SECONDS`      | Session limit threshold used by monitor telemetry (default: `470`)                 |
+| `NOVA_SESSION_STOP_ON_LIMIT`      | When `true`, cancels the pipeline at the limit to force renewal (default: `false`) |
+| `PORT`                            | FastAPI port (default: `8000`)                                                     |
 
 ---
 
@@ -206,3 +210,11 @@ Use Vonage-authored docs as source-of-truth when extending this app:
 - [Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
 - [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
 - [Vonage Voice API overview (Phase 2 Serializer/Voice scope)](https://developer.vonage.com/en/voice/overview)
+
+## Official AWS Bedrock and Nova References
+
+Keep this minimal set for setup, API behavior, and model selection:
+
+- [Amazon Bedrock API reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/welcome.html)
+- [Amazon Nova Sonic getting started](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-getting-started.html)
+- [Amazon Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)

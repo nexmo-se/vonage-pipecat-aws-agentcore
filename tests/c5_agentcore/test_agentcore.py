@@ -34,15 +34,26 @@ def main() -> None:
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
     aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
     runtime_arn = os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+    bedrock_connect_timeout_seconds = int(os.getenv("BEDROCK_CONNECT_TIMEOUT_SECONDS", "10").strip() or "10")
+    bedrock_read_timeout_seconds = int(os.getenv("BEDROCK_READ_TIMEOUT_SECONDS", "60").strip() or "60")
+    bedrock_max_attempts = int(os.getenv("BEDROCK_MAX_ATTEMPTS", "4").strip() or "4")
 
     # ── Imports ───────────────────────────────────────────────────
     try:
         import boto3
+        from botocore.config import Config
         from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
         print("  Run: pip install -r requirements.txt")
         sys.exit(1)
+
+    client_config = Config(
+        retries={"max_attempts": max(1, bedrock_max_attempts), "mode": "standard"},
+        connect_timeout=max(1, bedrock_connect_timeout_seconds),
+        read_timeout=max(1, bedrock_read_timeout_seconds),
+        user_agent_extra="vonage-pipecat-aws-agentcore-tests/c5-agentcore",
+    )
 
     try:
         has_explicit_env_creds = (
@@ -70,7 +81,7 @@ def main() -> None:
                 region_name=aws_region,
             )
 
-        agentcore_client = session.client("bedrock-agentcore")
+        agentcore_client = session.client("bedrock-agentcore", config=client_config)
     except ProfileNotFound as exc:
         print(f"ERROR: AWS profile not found — {exc}")
         print("  Set AWS_PROFILE to an existing CLI profile or provide AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY.")

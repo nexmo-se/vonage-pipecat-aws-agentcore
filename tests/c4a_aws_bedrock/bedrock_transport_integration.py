@@ -13,7 +13,10 @@ Usage:
 import json
 import logging
 import os
+import asyncio
 from typing import Optional
+
+from botocore.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,9 @@ class BedrockLLMIntegration:
         self.model_id = model_id
         self.region = region
         self.profile_name = profile_name
+        self.access_key_id = access_key_id
+        self.secret_access_key = secret_access_key
+        self.session_token = session_token
         self._client = None
 
     @property
@@ -55,15 +61,32 @@ class BedrockLLMIntegration:
             except ImportError as e:
                 raise ImportError(f"boto3 not installed: {e}") from e
 
+            max_attempts = int(os.getenv("BEDROCK_MAX_ATTEMPTS", "4").strip() or "4")
+            connect_timeout = int(os.getenv("BEDROCK_CONNECT_TIMEOUT_SECONDS", "10").strip() or "10")
+            read_timeout = int(os.getenv("BEDROCK_READ_TIMEOUT_SECONDS", "60").strip() or "60")
+            client_config = Config(
+                retries={"max_attempts": max_attempts, "mode": "standard"},
+                connect_timeout=connect_timeout,
+                read_timeout=read_timeout,
+                user_agent_extra="vonage-pipecat-aws-agentcore-tests/c4a",
+            )
+
             if self.profile_name:
                 session = boto3.Session(
                     profile_name=self.profile_name,
                     region_name=self.region,
                 )
+            elif self.access_key_id and self.secret_access_key:
+                session = boto3.Session(
+                    aws_access_key_id=self.access_key_id,
+                    aws_secret_access_key=self.secret_access_key,
+                    aws_session_token=self.session_token,
+                    region_name=self.region,
+                )
             else:
                 session = boto3.Session(region_name=self.region)
 
-            self._client = session.client("bedrock-runtime")
+            self._client = session.client("bedrock-runtime", config=client_config)
             logger.debug(f"Initialized Bedrock client for {self.model_id} in {self.region}")
 
         return self._client
@@ -90,42 +113,54 @@ class BedrockLLMIntegration:
         Raises:
             Exception: On Bedrock API errors
         """
-        # Build messages list
-        messages = []
-        if system_prompt:
-            messages.append({
-                "role": "user",
-                "content": [{"text": system_prompt}]
-            })
-
-        messages.append({
-            "role": "user",
-            "content": [{"text": user_text}]
-        })
-
         request_body = {
-            "messages": messages,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": user_text}],
+                }
+            ],
             "inferenceConfig": {
                 "maxTokens": max_tokens,
                 "temperature": temperature,
             },
         }
+        if system_prompt:
+            request_body["system"] = [{"text": system_prompt}]
 
         try:
             logger.debug(f"Invoking {self.model_id} with: {user_text[:100]}...")
-            response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(request_body),
-                contentType="application/json",
-                accept="application/json",
-            )
-            result = json.loads(response["body"].read())
-            reply = result["output"]["message"]["content"][0]["text"]
+
+            def _invoke_sync() -> dict:
+                response = self.client.invoke_model(
+                    modelId=self.model_id,
+                    body=json.dumps(request_body),
+                    contentType="application/json",
+                    accept="application/json",
+                )
+                return json.loads(response["body"].read())
+
+            result = await asyncio.to_thread(_invoke_sync)
+            reply = self._extract_reply_text(result)
             logger.debug(f"LLM response: {reply[:100]}...")
             return reply
         except Exception as e:
             logger.error(f"Bedrock invocation failed: {e}")
             raise
+
+    @staticmethod
+    def _extract_reply_text(result: dict) -> str:
+        """Handle standard Bedrock response shape with safe fallbacks."""
+        content = result.get("output", {}).get("message", {}).get("content", [])
+        if isinstance(content, list):
+            for item in content:
+                text = item.get("text") if isinstance(item, dict) else None
+                if text:
+                    return text
+        fallback_text = result.get("outputText")
+        if isinstance(fallback_text, str) and fallback_text.strip():
+            return fallback_text
+        raise ValueError(f"Unexpected Bedrock response format: {result}")
 
 
 class BedrockEchoContextManager:
