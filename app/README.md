@@ -100,6 +100,13 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - In Docker, the compose service mounts `${HOME}/.aws` to `/root/.aws` and `./private.key` to `/app/private.key`, so the app can reuse the AWS profile and Vonage key material already validated in the test folders.
 - If you want to stop the live pipeline without stopping the API process, call `POST /leave`.
 
+## Nova Sonic Reliability Notes
+
+- AWS Nova Sonic sessions have a practical connection window (about 8 minutes in AWS guidance).
+- The app now emits `session_renewal_recommended` before that window expires so callers can refresh via `POST /leave` + `POST /join`.
+- To force-stop at the limit for strict session hygiene, set `NOVA_SESSION_STOP_ON_LIMIT=true`.
+- Default behavior is non-breaking (`NOVA_SESSION_STOP_ON_LIMIT=false`): warning events/logs are emitted, but the pipeline is not force-stopped.
+
 ## End-to-End Test (From Scratch)
 
 Use this sequence for a clean, repeatable validation run:
@@ -170,18 +177,21 @@ docker compose --profile app down --remove-orphans
 
 All variables are loaded from the root `.env` file (see `.env.example`):
 
-| Variable                | Description                                               |
-| ----------------------- | --------------------------------------------------------- |
-| `VONAGE_APPLICATION_ID` | Vonage Video API application ID                           |
-| `VONAGE_PRIVATE_KEY`    | Path to Vonage private key file                           |
-| `VONAGE_SESSION_ID`     | Vonage Video session to join on startup                   |
-| `AWS_PROFILE`           | AWS CLI profile name (recommended, e.g. `vonage-dev`)     |
-| `AWS_ACCESS_KEY_ID`     | AWS access key (optional fallback if not using profile)   |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key (optional fallback if not using profile)   |
-| `AWS_REGION`            | AWS region (default: `us-east-1`)                         |
-| `BEDROCK_MODEL_ID`      | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`) |
-| `AGENTCORE_AGENT_ARN`   | Optional AgentCore runtime ARN used for startup bootstrap |
-| `PORT`                  | FastAPI port (default: `8000`)                            |
+| Variable                     | Description                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `VONAGE_APPLICATION_ID`      | Vonage Video API application ID                                                    |
+| `VONAGE_PRIVATE_KEY`         | Path to Vonage private key file                                                    |
+| `VONAGE_SESSION_ID`          | Vonage Video session to join on startup                                            |
+| `AWS_PROFILE`                | AWS CLI profile name (recommended, e.g. `vonage-dev`)                              |
+| `AWS_ACCESS_KEY_ID`          | AWS access key (optional fallback if not using profile)                            |
+| `AWS_SECRET_ACCESS_KEY`      | AWS secret key (optional fallback if not using profile)                            |
+| `AWS_REGION`                 | AWS region (default: `us-east-1`)                                                  |
+| `BEDROCK_MODEL_ID`           | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`)                          |
+| `AGENTCORE_AGENT_ARN`        | Optional AgentCore runtime ARN used for startup bootstrap                          |
+| `NOVA_SESSION_WARN_SECONDS`  | Emit renewal recommendation event after this many seconds (default: `410`)         |
+| `NOVA_SESSION_LIMIT_SECONDS` | Session limit threshold used by monitor telemetry (default: `470`)                 |
+| `NOVA_SESSION_STOP_ON_LIMIT` | When `true`, cancels the pipeline at the limit to force renewal (default: `false`) |
+| `PORT`                       | FastAPI port (default: `8000`)                                                     |
 
 ---
 

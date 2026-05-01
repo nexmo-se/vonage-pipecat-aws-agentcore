@@ -361,11 +361,11 @@ Python package baseline:
 
 Bedrock model IDs used in this project:
 
-| Model             | ID                       |
-| ----------------- | ------------------------ |
-| Amazon Nova Sonic | `amazon.nova-sonic-v1:0` |
-| Amazon Nova Lite  | `amazon.nova-lite-v1:0`  |
-| Amazon Nova Pro   | `amazon.nova-pro-v1:0`   |
+| Model             | ID                         |
+| ----------------- | -------------------------- |
+| Amazon Nova Sonic | `amazon.nova-2-sonic-v1:0` |
+| Amazon Nova Lite  | `amazon.nova-lite-v1:0`    |
+| Amazon Nova Pro   | `amazon.nova-pro-v1:0`     |
 
 Vonage Video recommendations:
 
@@ -440,6 +440,7 @@ Current runtime shape:
 - The FastAPI app auto-joins `VONAGE_SESSION_ID` on startup when it is present in `.env`.
 - The speech loop uses the same validated **Vonage Video Connector + Nova Sonic** path from C4b.
 - `AGENTCORE_AGENT_ARN` is used as an optional bootstrap step to shape the initial assistant behavior, not as a separate in-pipeline service hop.
+- The app monitor emits `session_renewal_recommended` before the Nova Sonic connection window expires so you can refresh with `POST /leave` then `POST /join`.
 
 See [app/README.md](app/README.md) for full instructions.
 

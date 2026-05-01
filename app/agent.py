@@ -200,6 +200,14 @@ class VonagePipecatAgent:
         audio_out_channels = env_int("VONAGE_AUDIO_OUT_CHANNELS", 1)
         monitor_enabled = env_bool("VONAGE_MONITOR_ENABLED", True)
         monitor_interval_seconds = env_int("VONAGE_MONITOR_INTERVAL_SECONDS", 15)
+        # AWS Nova Sonic docs describe an ~8 minute connection window.
+        # Emit an early renewal signal and optionally stop the pipeline at limit.
+        nova_session_limit_seconds = env_int("NOVA_SESSION_LIMIT_SECONDS", 470)
+        nova_session_warn_seconds = env_int(
+            "NOVA_SESSION_WARN_SECONDS",
+            max(60, nova_session_limit_seconds - 60),
+        )
+        nova_stop_on_limit = env_bool("NOVA_SESSION_STOP_ON_LIMIT", False)
 
         try:
             client = Vonage(
@@ -328,6 +336,9 @@ class VonagePipecatAgent:
         )
 
         context_seeded = False
+        session_started_at: float | None = None
+        renewal_emitted = False
+        renewal_stop_triggered = False
 
         async def seed_initial_context(reason: str) -> None:
             nonlocal context_seeded
@@ -338,16 +349,76 @@ class VonagePipecatAgent:
             context_seeded = True
 
         async def monitor_loop() -> None:
+            nonlocal renewal_emitted, renewal_stop_triggered
             while True:
                 await asyncio.sleep(max(1, monitor_interval_seconds))
-                logger.info("Monitor snapshot", connected=self.connected, event_counts=self.event_counts)
+                session_age_seconds: int | None = None
+                if session_started_at is not None:
+                    session_age_seconds = int(asyncio.get_running_loop().time() - session_started_at)
+
+                logger.info(
+                    "Monitor snapshot",
+                    connected=self.connected,
+                    event_counts=self.event_counts,
+                    session_age_seconds=session_age_seconds,
+                )
+
+                if session_age_seconds is None:
+                    continue
+
+                if not renewal_emitted and session_age_seconds >= nova_session_warn_seconds:
+                    renewal_emitted = True
+                    logger.warning(
+                        "Nova Sonic session renewal recommended",
+                        session_age_seconds=session_age_seconds,
+                        warn_after_seconds=nova_session_warn_seconds,
+                        limit_seconds=nova_session_limit_seconds,
+                    )
+                    await self._emit(
+                        {
+                            "event": "session_renewal_recommended",
+                            "session_id": self.session_id,
+                            "session_age_seconds": session_age_seconds,
+                            "warn_after_seconds": nova_session_warn_seconds,
+                            "limit_seconds": nova_session_limit_seconds,
+                            "recommended_action": "Call POST /leave then POST /join to refresh session",
+                        }
+                    )
+
+                if (
+                    nova_stop_on_limit
+                    and not renewal_stop_triggered
+                    and session_age_seconds >= nova_session_limit_seconds
+                ):
+                    renewal_stop_triggered = True
+                    self.last_error = "Nova Sonic session duration limit reached; renew with /leave then /join"
+                    logger.warning(
+                        "Stopping pipeline at Nova Sonic session limit",
+                        session_age_seconds=session_age_seconds,
+                        limit_seconds=nova_session_limit_seconds,
+                    )
+                    await self._emit(
+                        {
+                            "event": "session_renewal_required",
+                            "session_id": self.session_id,
+                            "session_age_seconds": session_age_seconds,
+                            "limit_seconds": nova_session_limit_seconds,
+                            "error": self.last_error,
+                        }
+                    )
+                    cancel_result = self._pipeline_task.cancel()
+                    if inspect.isawaitable(cancel_result):
+                        await cancel_result
+                    return
 
         if monitor_enabled:
             self._monitor_task = asyncio.create_task(monitor_loop())
 
         @transport.event_handler("on_joined")
         async def on_joined(_transport, data):
+            nonlocal session_started_at
             self.connected = True
+            session_started_at = asyncio.get_running_loop().time()
             logger.info("Joined session", session_id=data.get("sessionId"), model=bedrock_model_id)
             await self._emit({"event": "joined", "session_id": data.get("sessionId")})
 
