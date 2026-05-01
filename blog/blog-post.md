@@ -245,12 +245,68 @@ Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic streams 
 
 ---
 
-## Deployment Considerations
+## Deploying to Production
 
-- **Linux requirement** — The Vonage Video Connector SDK is a native Linux binary. Use Docker on macOS for development; deploy to a Linux VM or container for production.
-- **AgentCore scaling** — AgentCore Runtime can scale independently when used for startup bootstrap calls.
-- **Credentials** — Never commit `.env` or `private.key` to source control. Use AWS Secrets Manager or environment injection in production.
-- **Nova Sonic pricing** — Billed per second of audio processed. The pipeline's VAD (voice activity detection) ensures the model is only called when a participant is speaking.
+For customer deployments, do not treat `docker compose` as the production target. Compose is ideal for local validation, but production should run on Linux infrastructure.
+
+Typical production targets:
+
+- **EC2 / Linux VM**: simplest first production step. Run this app as a Linux service (direct Python process or container on the VM).
+- **Managed containers (recommended at scale)**: ECS/Fargate, EKS, or App Runner. Build once, deploy the same image through CI/CD.
+
+In other words: customers usually deploy on **Linux servers or managed container platforms**, not local-style Docker Compose workflows.
+
+### Bedrock vs AgentCore vs Nova (Production Responsibilities)
+
+These are complementary and should be described separately in production architecture docs:
+
+- **Amazon Bedrock**: managed API surface for model inference.
+- **Amazon Nova Sonic**: the real-time speech-to-speech model used through Bedrock.
+- **Amazon Bedrock AgentCore Runtime**: managed runtime for deployable agent logic (optional in this sample; used for startup bootstrap/persona priming).
+
+Short version:
+
+- **Bedrock** is the inference platform.
+- **Nova Sonic** is the specific model capability.
+- **AgentCore** is deployable runtime logic around the conversation.
+
+AWS API separation to keep explicit in production code:
+
+- **`bedrock`**: control plane APIs (model/control operations) ([AWS Bedrock API overview](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html))
+- **`bedrock-runtime`**: inference data plane APIs (`InvokeModel`, streaming inference) ([AWS Bedrock Runtime API](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModel_AnthropicClaude_section.html))
+- **`bedrock-agentcore`**: AgentCore runtime data plane for agent runtime invocation in this sample ([AWS Bedrock AgentCore Data Plane API](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html))
+
+### AWS Recommendations for This Stack
+
+Based on AWS Bedrock, AgentCore, and ECS documentation:
+
+- **Use IAM roles or temporary credentials in production**: avoid long-lived keys and short-term console API keys for backend services ([IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)).
+- **Use least-privilege IAM**: scope Bedrock runtime access, AgentCore runtime access, logging, and secret retrieval permissions only to required actions/resources ([IAM least privilege](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#bp-least-privilege), [AgentCore security and IAM](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)).
+- **Validate model and region compatibility before rollout**: confirm model IDs and region support per environment to avoid runtime mismatch ([Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html), [AgentCore supported regions](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-regions.html)).
+- **Configure retries and timeouts in SDK clients**: AWS SDKs support retry behavior; tune retries/timeouts for latency-sensitive voice workloads ([AWS SDK retry behavior](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)).
+- **Turn on observability by default**:
+  - CloudWatch metrics/logs for invocation latency, errors, throttles, and token usage ([Monitor Amazon Bedrock with CloudWatch](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html))
+  - CloudTrail for API audit trails ([Logging Amazon Bedrock API calls using CloudTrail](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html))
+  - Alarms for throttle/error spikes and latency regressions
+- **Follow ECS/containers security guidance when containerized**: task/container IAM roles, network security controls, and secret injection via AWS services ([ECS security](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security.html), [ECS security best practices](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security-best-practices.html)).
+- **Treat shared responsibility as design input**: data protection, encryption, IAM, and compliance controls are customer-owned configuration in production ([AWS shared responsibility model](https://aws.amazon.com/compliance/shared-responsibility-model/), [AgentCore security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)).
+
+### Practical POC-to-Production Path for Customers
+
+1. **POC**: run on one Linux host (EC2) with strong monitoring and restricted network access.
+2. **Hardening**: move secrets to AWS Secrets Manager or SSM Parameter Store; use least-privilege IAM for Bedrock + AgentCore + logging.
+3. **Scale**: migrate to ECS/Fargate (or EKS) for rolling deploys, autoscaling, and easier operations.
+
+### Production Checklist (Minimum)
+
+- **Runtime**: Linux-only deployment target for Video Connector compatibility.
+- **Secrets**: no plaintext `.env` or key files in repos/images.
+- **IAM**: only required Bedrock/AgentCore permissions; prefer role-based credentials.
+- **API endpoints**: use the correct AWS endpoint per call path (`bedrock-runtime` vs `bedrock-agentcore`).
+- **Model/region readiness**: verify model ID availability and quotas in deployment region.
+- **Health/ops**: `/status` checks + centralized logs/metrics/alerts.
+- **Session behavior**: keep Nova session renewal settings (`NOVA_SESSION_WARN_SECONDS`, `NOVA_SESSION_LIMIT_SECONDS`) tuned for long-lived calls.
+- **Cost control**: monitor Nova Sonic usage duration and idle behavior.
 
 ---
 
@@ -279,6 +335,20 @@ For implementation details and product behavior, use Vonage-authored documentati
 - [Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
 - [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
 - [Vonage Voice API overview](https://developer.vonage.com/en/voice/overview)
+
+---
+
+## Official AWS References
+
+- [Amazon Bedrock API methods and endpoint separation](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html)
+- [Amazon Bedrock model IDs and regional availability](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
+- [Amazon Bedrock monitoring and observability](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html)
+- [Amazon Bedrock CloudTrail logging](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html)
+- [Amazon Bedrock AgentCore security guidance](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)
+- [Amazon Bedrock AgentCore Data Plane API](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html)
+- [AWS IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
+- [AWS SDK retry behavior reference](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)
+- [Amazon ECS security best practices](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security-best-practices.html)
 
 ---
 
