@@ -31,6 +31,10 @@ Core building blocks:
 | **Amazon Nova Sonic**          | Low-latency speech-to-speech intelligence    |
 | **Amazon Bedrock AgentCore**   | Managed runtime for deployable agent logic   |
 
+### Architecture Overview
+
+![Architecture Diagram](images/architecture-overview.png)
+
 ## Bedrock and AgentCore
 
 These two AWS services are complementary.
