@@ -402,6 +402,22 @@ export AWS_PROFILE=vonage-dev
 # 4. Run tests in order (see each folder's README for details)
 ```
 
+Before running the full app, `VONAGE_SESSION_ID` must exist in root `.env`. You can get it in either of these ways:
+
+1. **Generate automatically via C1 (recommended):**
+
+```bash
+cd tests/c1_vonage_video_session
+uv run --with python-dotenv --with vonage python test_session.py
+# this writes VONAGE_SESSION_ID into the root .env file
+```
+
+2. **Create/select manually via Vonage dashboard/tools:**
+
+- Use the same `VONAGE_APPLICATION_ID` and account configured in `.env`.
+- Create/select a Vonage Video session in Vonage dashboard/tools.
+- Copy the session ID and paste it into `.env` as `VONAGE_SESSION_ID=...`.
+
 ---
 
 ## Test Folders
@@ -422,6 +438,8 @@ Work through the tests in order to validate each layer of the stack before wirin
 ## Full Application
 
 Once all staged tests pass, run the complete agent:
+
+Note: the app does not create a Vonage session ID for you. `VONAGE_SESSION_ID` must already exist in `.env` (from C1 or from manual creation via Vonage dashboard/tools).
 
 ```bash
 docker compose --profile app up --build     # repo root; macOS / non-Linux

@@ -68,6 +68,7 @@ Vonage Video Platform
 - Docker + Docker Compose (macOS / non-Linux)
   **or** Python 3.13.x with uv (native Linux)
 - All credentials in the root `.env` file (stages `C1`, `C2`, `C3`, `C4a`, `C4b`, and `C5` passed)
+- `VONAGE_SESSION_ID` must be present in root `.env` before app startup (generate it by running `tests/c1_vonage_video_session/test_session.py`)
 
 ---
 
@@ -127,6 +128,8 @@ Use the correct AWS API surface per call path:
 
 ## Runtime Notes
 
+- The app does not auto-create a Vonage session. If `VONAGE_SESSION_ID` is empty, startup will run but the agent cannot join a session.
+- Obtain `VONAGE_SESSION_ID` either by running C1 (`tests/c1_vonage_video_session/test_session.py`) or by creating/selecting a session manually in Vonage dashboard/tools and copying it into `.env`.
 - When `VONAGE_SESSION_ID` is set, the app auto-joins that session on startup.
 - `GET /status` is the quickest health check for the live agent pipeline. A healthy startup should show `running: true` and `last_error: null`.
 - `connected` may remain `false` until a participant/client actually joins the Vonage session, then transitions to `true`.
