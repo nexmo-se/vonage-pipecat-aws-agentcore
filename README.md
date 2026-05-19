@@ -250,51 +250,6 @@ The `app/` folder combines all five pieces into a complete agent:
 
 ## Architecture
 
-High-level runtime topology:
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                  Browser / Mobile Client                      │
-│              (Vonage Video Web SDK / OpenTok.js)              │
-└───────────────────────────┬──────────────────────────────────┘
-                            │  WebRTC (audio + video)
-                            ▼
-┌──────────────────────────────────────────────────────────────┐
-│              Vonage Video API Platform                        │
-│         (Session Management · Media Routing)                 │
-└───────────────────────────┬──────────────────────────────────┘
-                            │  Session join via Video Connector transport
-                            ▼
-┌──────────────────────────────────────────────────────────────┐
-│         AI Agent Runtime (Pipecat on AgentCore)              │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                 Pipecat Pipeline                     │    │
-│  │                                                      │    │
-│  │  ┌───────────────┐   ┌──────────────┐               │    │
-│  │  │    Vonage     │   │  AWS Bedrock │               │    │
-│  │  │  Transport      │◀─▶│  Nova Sonic  │               │    │
-│  │  │ (session I/O)   │   │ (speech I/O) │               │    │
-│  │  └───────────────┘   └──────┬───────┘               │    │
-│  │                             │                       │    │
-│  │                      ┌──────▼────────┐              │    │
-│  │                      │ Agent Logic    │              │    │
-│  │                      │ on AgentCore   │              │    │
-│  │                      └───────────────┘              │    │
-│  └─────────────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────────────┘
-```
-
-What is happening in this sample:
-
-1. A browser joins a **Vonage Video** session.
-2. The AI agent joins that same session through the **Vonage Video Connector Pipecat transport**.
-3. **Pipecat** orchestrates the real-time conversation loop.
-4. **Amazon Nova Sonic** handles low-latency speech input/output.
-5. **Amazon Bedrock AgentCore Runtime** hosts the deployable agent logic used by the full application and C5 runtime validation.
-
-This repository uses the session-participant model where **Vonage is the media/session intermediary** (see **Transport vs Serializer** above).
-
 ### Data Flow
 
 Inbound (Browser to Agent):
@@ -464,7 +419,85 @@ Current runtime shape:
 - `AGENTCORE_AGENT_ARN` is used as an optional bootstrap step to shape the initial assistant behavior, not as a separate in-pipeline service hop.
 - The app monitor emits `session_renewal_recommended` before the Nova Sonic connection window expires so you can refresh with `POST /leave` then `POST /join`.
 
+### Voice Persona Options (Use-Case Configuration)
+
+The initial greeting and first-turn AI behavior are controlled by optional `.env` values:
+
+- `BEDROCK_INITIAL_USER_MESSAGE` — Seeded on session start; shapes first-turn context and tone.
+- `AGENTCORE_BOOTSTRAP_PROMPT` — Shapes AgentCore bootstrap persona (when `AGENTCORE_AGENT_ARN` is set).
+
+**Current default (active now): Nurse Triage Intake**
+
+This is the **primary use case** for this deployment. The agent acts as a nurse intake assistant and will:
+
+- Greet with triage context (not generic hello).
+- Ask one question at a time about symptoms, onset, and severity.
+- Collect red-flag indicators and escalate immediately if severe symptoms are reported.
+- Keep responses concise and empathetic.
+
+Use case is ideal for:
+
+- Post-visit follow-up triaging.
+- Symptom assessment before routing to appropriate care.
+- Medication adherence checks.
+- Preliminary safety screening.
+
+Current active settings (`.env.example` defaults):
+
+```dotenv
+BEDROCK_INITIAL_USER_MESSAGE=Hello, I am your nurse intake assistant. I will ask a few brief triage questions to help route your care quickly. What symptom are you experiencing now?
+AGENTCORE_BOOTSTRAP_PROMPT=You are a nurse triage voice assistant. Ask one short question at a time. Capture symptom, onset, severity from 1-10, and red flags. Keep responses concise and empathetic. If severe red-flag symptoms are mentioned, advise immediate emergency care and escalate.
+```
+
+**Rollback: Generic Greeting (Previous Default)**
+
+To restore the original generic greeting behavior, update `.env` and restart:
+
+```dotenv
+BEDROCK_INITIAL_USER_MESSAGE=Please greet the participant briefly and ask how you can help.
+AGENTCORE_BOOTSTRAP_PROMPT=Provide one short greeting plus one helpful follow-up question for a live voice assistant session.
+```
+
+Then restart:
+
+```bash
+docker compose --profile app down --remove-orphans
+docker compose --profile app up -d --build app
+```
+
+**Alternative Use Case: Post-Discharge Follow-Up Triage**
+
+```dotenv
+BEDROCK_INITIAL_USER_MESSAGE=Hi, this is a post-discharge nurse follow-up call. I will check your recovery and medication adherence. How are you feeling today compared to discharge day?
+AGENTCORE_BOOTSTRAP_PROMPT=You are a post-discharge nurse triage assistant. Collect recovery status, medication adherence, worsening symptoms, and follow-up completion. Be concise, supportive, and safety-first. Escalate immediately if symptoms worsen significantly.
+```
+
+To apply any persona change:
+
+1. Edit `.env` with the desired `BEDROCK_INITIAL_USER_MESSAGE` and `AGENTCORE_BOOTSTRAP_PROMPT` values.
+2. Restart app containers:
+
+```bash
+docker compose --profile app down --remove-orphans
+docker compose --profile app up -d --build app
+```
+
+3. Join Vonage Playground to test the new behavior.
+
 See [app/README.md](app/README.md) for full instructions.
+
+## Production Deployment
+
+Use `docker compose` for local validation only. For production, deploy on Linux infrastructure:
+
+- **Fastest path**: EC2/Linux VM running this app as a service or container.
+- **Recommended at scale**: ECS/Fargate (or EKS/App Runner) with CI/CD image deploys.
+
+Production responsibility split:
+
+- **Amazon Bedrock**: model inference platform.
+- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
+- **Amazon Bedrock AgentCore Runtime**: optional managed bootstrap/runtime logic.
 
 ## Production Deployment
 
