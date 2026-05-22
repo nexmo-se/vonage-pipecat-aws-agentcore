@@ -138,6 +138,63 @@ curl http://localhost:8000/status
 
 ---
 
+## Step 5 — Add AgentCore Bootstrap (Optional)
+
+When `AGENTCORE_AGENT_ARN` is set, the agent invokes AgentCore once at session start to fetch a priming message. This enables tool use, RAG, and external API calls before the conversation begins.
+
+In this architecture, AgentCore acts as an optional bootstrap layer:
+
+- **Amazon Bedrock** handles live model inference during the conversation loop.
+- **Amazon Bedrock AgentCore Runtime** returns startup instructions/persona that shape first-turn behavior.
+
+Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
+
+From [app/agent.py](../app/agent.py), the bootstrap is injected into the initial LLM context:
+
+```python
+# Optional AgentCore bootstrap — invoked once at session start
+bootstrap_message = await invoke_agentcore_bootstrap(agentcore_bootstrap_prompt)
+
+context_messages = []
+if bootstrap_message:
+    context_messages.append({
+        "role": "user",
+        "content": (
+            "Use the following context to shape your first response style: "
+            f"{bootstrap_message}"
+        ),
+    })
+if initial_user_message:
+    context_messages.append({"role": "user", "content": initial_user_message})
+
+context = LLMContext(messages=context_messages)
+```
+
+### Deploy Your Own AgentCore Runtime
+
+Use the C5 flow to deploy a runtime and capture its ARN:
+
+```bash
+cd tests/c5_agentcore
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install bedrock-agentcore-starter-toolkit
+
+agentcore configure -e hello_agent.py -r us-east-1
+agentcore deploy
+```
+
+After deploy succeeds, copy the runtime ARN and set it in root `.env`:
+
+```dotenv
+AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/<your-runtime-id>
+```
+
+If `AGENTCORE_AGENT_ARN` is not set, the app still runs normally with Nova Sonic defaults.
+
+---
+
 ## SDK Usage Snippets
 
 These snippets are intentionally simplified to highlight SDK usage. For the production implementation used in this repo, see [app/agent.py](../app/agent.py).
@@ -247,14 +304,27 @@ Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic streams 
 
 ## Deploying to Production
 
-For customer deployments, do not treat `docker compose` as the production target. Compose is ideal for local validation, but production should run on Linux infrastructure.
+`docker compose` is for local development only. For production, the agent runs as a containerized Linux service. The recommended path follows a three-stage progression from POC to production.
 
-Typical production targets:
+**POC → Hardening → Scale**
 
-- **EC2 / Linux VM**: simplest first production step. Run this app as a Linux service (direct Python process or container on the VM).
-- **Managed containers (recommended at scale)**: ECS/Fargate, EKS, or App Runner. Build once, deploy the same image through CI/CD.
+**POC** — Start on a single Linux host (EC2) with strong monitoring and restricted network access. This validates the full stack end-to-end before investing in infrastructure.
 
-In other words: customers usually deploy on **Linux servers or managed container platforms**, not local-style Docker Compose workflows.
+**Hardening** — Move secrets to AWS Secrets Manager or SSM Parameter Store. Apply least-privilege IAM scoped to Bedrock, AgentCore, and logging only. Remove all plaintext `.env` files and key files from repos and images.
+
+**Scale** — Migrate to ECS/Fargate (or EKS) for rolling deploys, autoscaling, and easier operations. Configure your load balancer with sticky sessions for WebSocket connections to `/ws` — this is critical for voice calls since each call maintains a persistent WebSocket connection for its duration.
+
+### Production Checklist
+
+- **Runtime**: Linux-based deployment target — required for Voice SDK compatibility
+- **Secrets**: no plaintext `.env` or key files in repos or container images
+- **IAM**: least-privilege credentials scoped to Bedrock, AgentCore, and logging; prefer role-based over static keys
+- **API endpoints**: use the correct AWS endpoint per call path (`bedrock-runtime` for Nova Sonic, `bedrock-agentcore` for AgentCore)
+- **Model/region readiness**: verify model ID availability and quotas in your deployment region before go-live
+- **WebSocket sticky sessions**: configure ALB or load balancer with session affinity for `/ws` — each active call is a persistent connection
+- **Health/ops**: expose `/status` for health checks; route centralized logs, metrics, and alerts to CloudWatch
+- **Session behavior**: tune `NOVA_SESSION_WARN_SECONDS` and `NOVA_SESSION_LIMIT_SECONDS` for long-lived calls
+- **Cost control**: monitor Nova Sonic usage duration and idle session behavior to avoid unexpected charges
 
 ### Bedrock vs AgentCore vs Nova (Production Responsibilities)
 
@@ -290,23 +360,6 @@ Based on AWS Bedrock, AgentCore, and ECS documentation:
   - Alarms for throttle/error spikes and latency regressions
 - **Follow ECS/containers security guidance when containerized**: task/container IAM roles, network security controls, and secret injection via AWS services ([ECS security](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security.html), [ECS security best practices](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security-best-practices.html)).
 - **Treat shared responsibility as design input**: data protection, encryption, IAM, and compliance controls are customer-owned configuration in production ([AWS shared responsibility model](https://aws.amazon.com/compliance/shared-responsibility-model/), [AgentCore security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)).
-
-### Practical POC-to-Production Path for Customers
-
-1. **POC**: run on one Linux host (EC2) with strong monitoring and restricted network access.
-2. **Hardening**: move secrets to AWS Secrets Manager or SSM Parameter Store; use least-privilege IAM for Bedrock + AgentCore + logging.
-3. **Scale**: migrate to ECS/Fargate (or EKS) for rolling deploys, autoscaling, and easier operations.
-
-### Production Checklist (Minimum)
-
-- **Runtime**: Linux-only deployment target for Video Connector compatibility.
-- **Secrets**: no plaintext `.env` or key files in repos/images.
-- **IAM**: only required Bedrock/AgentCore permissions; prefer role-based credentials.
-- **API endpoints**: use the correct AWS endpoint per call path (`bedrock-runtime` vs `bedrock-agentcore`).
-- **Model/region readiness**: verify model ID availability and quotas in deployment region.
-- **Health/ops**: `/status` checks + centralized logs/metrics/alerts.
-- **Session behavior**: keep Nova session renewal settings (`NOVA_SESSION_WARN_SECONDS`, `NOVA_SESSION_LIMIT_SECONDS`) tuned for long-lived calls.
-- **Cost control**: monitor Nova Sonic usage duration and idle behavior.
 
 ---
 
