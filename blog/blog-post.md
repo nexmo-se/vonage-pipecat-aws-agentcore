@@ -316,7 +316,7 @@ Each stage processes Pipecat `Frame` objects asynchronously. Nova Sonic streams 
 
 ### Production Checklist
 
-- **Runtime**: Linux-based deployment target — required for Voice SDK compatibility
+- **Runtime**: Linux-based deployment target — required for Video Connector SDK compatibility
 - **Secrets**: no plaintext `.env` or key files in repos or container images
 - **IAM**: least-privilege credentials scoped to Bedrock, AgentCore, and logging; prefer role-based over static keys
 - **API endpoints**: use the correct AWS endpoint per call path (`bedrock-runtime` for Nova Sonic, `bedrock-agentcore` for AgentCore)
