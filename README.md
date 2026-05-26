@@ -275,17 +275,6 @@ Outbound (Agent to Browser):
 | `TranscriptionFrame`       | Internal  | STT output text                      |
 | `TextFrame`                | Internal  | AgentCore LLM response text          |
 
-### Latency Budget (Typical)
-
-| Stage                              | Typical latency  |
-| ---------------------------------- | ---------------- |
-| VAD detection                      | < 50 ms          |
-| Nova Sonic STT (first token)       | ~200–400 ms      |
-| AgentCore inference (first token)  | ~300–600 ms      |
-| Nova Sonic TTS (first audio chunk) | ~100–200 ms      |
-| Vonage media routing               | < 50 ms          |
-| **Total (time-to-first-audio)**    | **~650–1300 ms** |
-
 ### Security Notes
 
 - Keep credentials in `.env` (gitignored).
