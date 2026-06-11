@@ -161,7 +161,7 @@ def main() -> None:
     print(f"   (same value as VONAGE_SESSION_ID in root .env)")
     print(f"3. API Key (if asked): {application_id}")
     print("4. Connect → Publish (mic on)")
-    print("5. Then run C6 echo/full so the agent joins this same session")
+    print("5. Then run C6 (--stage echo|full) or answer/smoke_local.py to start the agent")
     print(separator)
     print("\nTest C1 PASSED ✓")
 

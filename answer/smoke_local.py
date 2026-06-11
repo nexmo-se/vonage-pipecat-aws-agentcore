@@ -59,14 +59,41 @@ def _session_id() -> str:
     return sid
 
 
+def _generate_vonage_token(session_id: str) -> str:
+    """Mint agent publisher token locally (private.key) — same as C6 harness."""
+    application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
+    key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
+    private_key_file = Path(key_path)
+    if not private_key_file.is_absolute():
+        private_key_file = REPO_ROOT / key_path
+    if not application_id or not private_key_file.exists():
+        print(
+            "WARN: cannot mint token locally — App Runner will generate token (needs VONAGE_PRIVATE_KEY_B64)",
+            file=sys.stderr,
+        )
+        return ""
+
+    from vonage import Auth, Vonage
+    from vonage_video import TokenOptions
+
+    client = Vonage(Auth(application_id=application_id, private_key=str(private_key_file)))
+    token = client.video.generate_client_token(
+        TokenOptions(session_id=session_id, role="publisher")
+    )
+    return token.decode("utf-8") if isinstance(token, bytes) else str(token)
+
+
 def cmd_start(mode: str) -> int:
     session_id = _session_id()
+    token = _generate_vonage_token(session_id)
+    payload: dict[str, str] = {"session_id": session_id, "mode": mode}
+    if token:
+        payload["token"] = token
+        print(f"  token: minted locally ({len(token)} chars)")
+    else:
+        print("  token: not set — App Runner must generate (needs VONAGE_PRIVATE_KEY_B64)")
     print(f"POST /start-agent  session={session_id[:24]}…  mode={mode}")
-    result = _request(
-        "POST",
-        "/start-agent",
-        {"session_id": session_id, "mode": mode},
-    )
+    result = _request("POST", "/start-agent", payload)
     print(json.dumps(result, indent=2))
 
     runtime_session_id = result.get("runtime_session_id")
@@ -81,7 +108,7 @@ def cmd_start(mode: str) -> int:
             print("\nPhase 1 PASS — agent connected via answer/ orchestrator.")
             print("  Validate in Playground: agent participant visible + audio.")
             print(f"  runtime_session_id: {runtime_session_id}")
-            print("  When done: python smoke_local.py --leave")
+            print(f"  When done: ANSWER_BASE_URL={BASE_URL} .venv/bin/python answer/smoke_local.py --leave")
             return 0
         time.sleep(2)
 
@@ -125,8 +152,10 @@ def main() -> None:
         if args.leave:
             sys.exit(cmd_leave())
         sys.exit(cmd_start(args.mode))
+    except urllib.error.HTTPError:
+        sys.exit(1)
     except urllib.error.URLError as exc:
-        print(f"ERROR: cannot reach {BASE_URL} — is answer/server.py running?\n  {exc}", file=sys.stderr)
+        print(f"ERROR: cannot reach {BASE_URL} — is the service running?\n  {exc}", file=sys.stderr)
         sys.exit(1)
 
 

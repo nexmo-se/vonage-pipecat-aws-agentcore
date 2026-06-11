@@ -254,7 +254,9 @@ Once all staged tests pass:
 6. **C5** confirms AgentCore runtime deployment and bootstrap capability.
 7. **C6** confirms Vonage Video WebRTC + Pipecat inside AgentCore Runtime (production path).
 
-The `app/` folder combines C1–C4b for **local dev**. Production uses `runtime/` (AgentCore) + `answer/` (orchestration).
+The `app/` folder combines C1–C4b for **local dev**. Production uses `runtime/` (AgentCore) + `answer/` (App Runner orchestrator, validated June 2026).
+
+**Phase 1 App Runner:** `https://x9bqavn3zv.us-east-1.awsapprunner.com` — see [`answer/README.md`](answer/README.md) and [`dev/june11-dev.txt`](dev/june11-dev.txt).
 
 - Uses the session from **C1**.
 - Joins via the connector from **C2**.

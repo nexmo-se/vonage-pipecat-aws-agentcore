@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeAgentCoreVideoRuntime",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:InvokeAgentRuntime",
+      "Resource": [
+        "arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/video_agent-ErxQpSHrDP",
+        "arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/video_agent-ErxQpSHrDP/*"
+      ]
+    }
+  ]
+}

@@ -122,7 +122,15 @@ AWS_PROFILE=vonage-dev ../../.venv/bin/python test_agentcore_video.py --stage le
 
 **Important:** Use the same `runtimeSessionId` across join/status/leave (handled by `answer/server.py` and `test_agentcore_video.py`).
 
-Or use orchestration API:
+Or use orchestration API (App Runner — production):
+
+```bash
+# See answer/README.md and dev/june11-dev.txt
+ANSWER_BASE_URL=https://x9bqavn3zv.us-east-1.awsapprunner.com \
+  AWS_PROFILE=vonage-dev .venv/bin/python answer/smoke_local.py
+```
+
+Local orchestrator:
 
 ```bash
 cd answer && pip install -r requirements.txt

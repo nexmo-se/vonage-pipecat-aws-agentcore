@@ -11,6 +11,7 @@ Requires AGENTCORE_RUNTIME_ARN (or C6_AGENTCORE_RUNTIME_ARN) and Vonage creds in
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import uuid
@@ -19,15 +20,22 @@ from typing import Any
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(REPO_ROOT / ".env")
+if (REPO_ROOT / ".env").exists():
+    load_dotenv(REPO_ROOT / ".env")
 
 app = FastAPI(title="Vonage Video Agent Orchestrator", version="0.1.0")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 # Stable session id per orchestration client — required for join/status/leave affinity
 _runtime_session_id: str | None = None
@@ -54,15 +62,42 @@ def _runtime_arn() -> str:
 
 
 def _agentcore_client():
-    region = os.getenv("AWS_REGION", "us-east-1").strip()
-    profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
+    region = (
+        os.getenv("AWS_REGION", "").strip()
+        or os.getenv("AWS_DEFAULT_REGION", "us-east-1").strip()
+    )
     config = Config(
         retries={"max_attempts": 4, "mode": "standard"},
         connect_timeout=10,
         read_timeout=120,
     )
-    session = boto3.Session(profile_name=profile or None, region_name=region)
+    # App Runner: instance role via default chain. Local dev: optional AWS_PROFILE.
+    profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
+    on_apprunner = bool(os.getenv("AWS_APP_RUNNER_SERVICE_ID"))
+    if profile and not on_apprunner:
+        session = boto3.Session(profile_name=profile, region_name=region)
+    else:
+        session = boto3.Session(region_name=region)
     return session.client("bedrock-agentcore", config=config)
+
+
+def _vonage_private_key() -> str:
+    """PEM string for Vonage Auth — env (App Runner) or file (local dev)."""
+    pem = os.getenv("VONAGE_PRIVATE_KEY_PEM", "").strip()
+    if pem:
+        return pem.replace("\\n", "\n")
+
+    b64 = os.getenv("VONAGE_PRIVATE_KEY_B64", "").strip()
+    if b64:
+        return base64.b64decode(b64).decode("utf-8")
+
+    private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
+    private_key_file = Path(private_key_path)
+    if not private_key_file.is_absolute():
+        private_key_file = REPO_ROOT / private_key_path
+    if not private_key_file.exists():
+        raise HTTPException(status_code=500, detail="Vonage private key not configured")
+    return private_key_file.read_text(encoding="utf-8")
 
 
 def _generate_token(session_id: str) -> str:
@@ -70,14 +105,12 @@ def _generate_token(session_id: str) -> str:
     from vonage_video import TokenOptions
 
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
-    private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    private_key_file = Path(private_key_path)
-    if not private_key_file.is_absolute():
-        private_key_file = REPO_ROOT / private_key_path
-    if not application_id or not private_key_file.exists():
-        raise HTTPException(status_code=500, detail="Vonage credentials not configured")
+    if not application_id:
+        raise HTTPException(status_code=500, detail="VONAGE_APPLICATION_ID not set")
 
-    client = Vonage(Auth(application_id=application_id, private_key=str(private_key_file)))
+    client = Vonage(
+        Auth(application_id=application_id, private_key=_vonage_private_key())
+    )
     token = client.video.generate_client_token(
         TokenOptions(session_id=session_id, role="publisher")
     )
@@ -94,7 +127,16 @@ def _invoke(payload: dict[str, Any], *, runtime_session_id: str | None = None) -
     }
     if runtime_session_id:
         kwargs["runtimeSessionId"] = runtime_session_id
-    response = client.invoke_agent_runtime(**kwargs)
+    try:
+        response = client.invoke_agent_runtime(**kwargs)
+    except ClientError as exc:
+        err = exc.response.get("Error", {})
+        raise HTTPException(
+            status_code=502,
+            detail=f"AgentCore invoke failed: {err.get('Code', 'ClientError')}: {err.get('Message', exc)}",
+        ) from exc
+    except BotoCoreError as exc:
+        raise HTTPException(status_code=502, detail=f"AgentCore client error: {exc}") from exc
     body = response.get("payload") or response.get("response")
     if hasattr(body, "read"):
         body = body.read()
@@ -109,8 +151,22 @@ def _invoke(payload: dict[str, Any], *, runtime_session_id: str | None = None) -
 
 
 @app.get("/")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "build": os.getenv("BUILD_VERSION", "local"),
+        "runtime_arn_set": bool(
+            os.getenv("AGENTCORE_RUNTIME_ARN", "").strip()
+            or os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
+            or os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+        ),
+        "vonage_app_id_set": bool(os.getenv("VONAGE_APPLICATION_ID", "").strip()),
+        "vonage_key_set": bool(
+            os.getenv("VONAGE_PRIVATE_KEY_B64", "").strip()
+            or os.getenv("VONAGE_PRIVATE_KEY_PEM", "").strip()
+            or os.getenv("VONAGE_PRIVATE_KEY", "").strip()
+        ),
+    }
 
 
 @app.post("/start-agent")
@@ -118,7 +174,10 @@ async def start_agent(body: StartAgentRequest = Body(...)) -> dict[str, Any]:
     global _runtime_session_id
 
     session_id = body.session_id.strip()
-    token = body.token.strip() or _generate_token(session_id)
+    try:
+        token = body.token.strip() or _generate_token(session_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Vonage token error: {exc}") from exc
     mode = body.mode.strip().lower()
     if mode not in {"nova_sonic", "echo"}:
         raise HTTPException(status_code=400, detail=f"unsupported mode: {mode}")
@@ -164,5 +223,5 @@ async def leave() -> dict[str, Any]:
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("ANSWER_PORT", "8080"))
+    port = int(os.getenv("ANSWER_PORT") or os.getenv("PORT", "8080"))
     uvicorn.run("server:app", host="0.0.0.0", port=port, reload=False)
