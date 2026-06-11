@@ -30,12 +30,29 @@ cd answer
 pip install -r requirements.txt
 
 # Root .env must have:
-#   AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:...
+#   AGENTCORE_RUNTIME_ARN (or C6_AGENTCORE_RUNTIME_ARN / AGENTCORE_AGENT_ARN)
 #   VONAGE_APPLICATION_ID=...
 #   VONAGE_PRIVATE_KEY=private.key
 #   AWS_PROFILE=vonage-dev
 
 AWS_PROFILE=vonage-dev python server.py
+```
+
+### Phase 1 smoke test (validated workflow)
+
+See [`dev/DEV.txt`](../dev/DEV.txt) — answer section. Summary:
+
+1. C1 → `VONAGE_SESSION_ID` in root `.env`
+2. Start `server.py` (port 8080)
+3. Playground → **Join existing session** → publish mic
+4. `python smoke_local.py` — invokes `/start-agent`, polls `/status` until `connected: true`
+5. `python smoke_local.py --leave` when done
+
+```bash
+# From repo root .venv:
+cd answer
+AWS_PROFILE=vonage-dev ../.venv/bin/python smoke_local.py
+AWS_PROFILE=vonage-dev ../.venv/bin/python smoke_local.py --leave
 ```
 
 ## Deploy to App Runner
