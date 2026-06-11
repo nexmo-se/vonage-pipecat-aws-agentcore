@@ -140,7 +140,10 @@ class VonagePipecatAgent:
         aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
         bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
         aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
-        agentcore_runtime_arn = os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+        agentcore_runtime_arn = (
+            os.getenv("AGENTCORE_RUNTIME_ARN", "").strip()
+            or os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+        )
         initial_user_message = os.getenv(
             "BEDROCK_INITIAL_USER_MESSAGE",
             "Please greet the participant briefly and ask how you can help.",

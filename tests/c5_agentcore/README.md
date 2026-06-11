@@ -10,7 +10,7 @@ Minimal steps to reproduce a working C5 run with a real deployed AgentCore runti
 - Deploy that code to AWS without managing servers or containers.
 - Invoke the deployed agent via API calls at runtime.
 
-In this project, AgentCore serves as an **optional bootstrap initialization layer**. At session start, if `AGENTCORE_AGENT_ARN` is set in `.env`, the app invokes AgentCore to retrieve a priming message (e.g., custom system instructions, persona, or dynamic context). This message is then injected into the Pipecat pipeline to customize the agent's behavior before real-time conversation begins.
+In this project, AgentCore serves as an **optional bootstrap initialization layer** in local `app/` only. At session start, if `AGENTCORE_RUNTIME_ARN` (or legacy `AGENTCORE_AGENT_ARN`) is set in `.env`, the app invokes AgentCore to retrieve a priming message. Production uses `runtime/` + `answer/` — the full agent runs in AgentCore, not as a bootstrap.
 
 **Key benefit:** Decouples static agent logic (deployment-time) from real-time orchestration (runtime). You deploy your agent logic to a managed AWS runtime, and the FastAPI app simply calls it to bootstrap each session.
 
@@ -48,7 +48,7 @@ Keep both files in this folder so C5 remains self-contained (deploy artifact + t
 | Agent logic must be versioned and auditable                        | Yes            | AgentCore deployments are immutable and AWS-managed with full audit trails.          |
 | Quick MVP or one-off demo                                          | No             | Run raw Pipecat + Nova Sonic; skip AgentCore overhead.                               |
 
-If `AGENTCORE_AGENT_ARN` is not set in `.env`, the agent runs without bootstrap and uses Nova Sonic defaults. If it is set, AgentCore's bootstrap message customizes behavior before real-time interaction.
+If `AGENTCORE_RUNTIME_ARN` is not set in `.env`, C5 fails fast. For local `app/` optional bootstrap, the same var (or legacy `AGENTCORE_AGENT_ARN`) enables priming before Nova Sonic.
 
 ## Do I Need Both AWS Files?
 
@@ -106,6 +106,8 @@ export AWS_PROFILE=vonage-dev
 If this profile command fails, fix AWS credentials first before running C5 steps.
 
 ## IAM Policies and Permissions Needed
+
+> **Central reference:** [docs/AWS_IAM.md](../../docs/AWS_IAM.md) — all roles, SCP rules, and policy templates for this repo.
 
 For this exact C5 flow (auto-create execution role and auto-create S3 bucket), these were required:
 
@@ -174,11 +176,13 @@ arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-...
 
 ## 4. Set Runtime ARN
 
-In repo root `.env`, set:
+In repo root `.env`, set the canonical name (C5 reads legacy aliases too):
 
 ```bash
-AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-...
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:<your-account-id>:runtime/hello_agent-...
 ```
+
+After deploying `runtime/` for production, replace with your `video_agent-*` ARN — same variable name.
 
 ## 5. Run C5 Test
 
@@ -207,4 +211,4 @@ Test C5 PASSED ✓
 ## Common Failure
 
 - `AccessDenied` on `iam:CreateRole`: your AWS identity cannot create roles; ask admin to grant IAM role-creation permissions or pre-create the execution role.
-- `ResourceNotFoundException` with `...runtime/<your-runtime-id>`: a placeholder runtime ARN is being used. Check that `AGENTCORE_AGENT_ARN` in `.env` is set to your deployed runtime ARN.
+- `ResourceNotFoundException` with `...runtime/<your-runtime-id>`: placeholder or wrong ARN. Set `AGENTCORE_RUNTIME_ARN` in `.env` to your deployed runtime ARN from step 3.

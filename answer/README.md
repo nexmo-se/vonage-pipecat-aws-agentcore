@@ -19,14 +19,18 @@ Lightweight **HTTPS orchestrator** that starts the AgentCore video agent for a V
 
 ```text
 Playground / React client
-  → POST /start-agent { session_id, token }
+  → POST /start-agent { session_id, token? }
   → App Runner (this service)
-  → bedrock-agentcore InvokeAgentRuntime
+  → bedrock-agentcore InvokeAgentRuntime (runtimeSessionId per client)
   → runtime/agent.py on video_agent-ErxQpSHrDP
-  → Vonage WebRTC + Nova Sonic
+  → VonageVideoConnectorTransport + Pipecat + Nova Sonic
 ```
 
 C1 creates the Vonage session only. **The agent joins when `/start-agent` is called** — not when Playground opens.
+
+**Token flow:** `smoke_local.py` mints the Vonage publisher token locally and passes it to App Runner. If the client omits `token`, App Runner can mint one (`answer/server.py`). AgentCore (`runtime/agent.py`) can also mint a token if the join payload has none.
+
+**Session affinity:** App Runner stores `runtimeSessionId` in process memory. `/status` and `/leave` must hit the same instance that handled `/start-agent` (single-instance POC; multi-instance App Runner would need sticky sessions or external state).
 
 ---
 
@@ -49,7 +53,7 @@ ANSWER_BASE_URL=https://x9bqavn3zv.us-east-1.awsapprunner.com \
   AWS_PROFILE=vonage-dev .venv/bin/python answer/smoke_local.py --leave
 ```
 
-`smoke_local.py` mints the Vonage publisher token **locally** from `private.key` and passes it to App Runner. App Runner only invokes AgentCore.
+`smoke_local.py` mints the Vonage publisher token **locally** from `private.key` and passes it to App Runner. App Runner invokes AgentCore (HTTP only — no media path through App Runner).
 
 Verify deploy health:
 
@@ -68,7 +72,7 @@ See also: [`dev/june11-dev.txt`](../dev/june11-dev.txt), [`dev/DEV.txt`](../dev/
 cd answer
 ../.venv/bin/pip install -r requirements.txt
 
-# Root .env: AGENTCORE_AGENT_ARN, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY=private.key
+# Root .env: AGENTCORE_RUNTIME_ARN, VONAGE_APPLICATION_ID, VONAGE_PRIVATE_KEY=private.key
 # Listens on ANSWER_PORT (default 8080) — not root .env PORT=8000
 
 AWS_PROFILE=vonage-dev ../.venv/bin/python server.py
@@ -85,9 +89,14 @@ AWS_PROFILE=vonage-dev .venv/bin/python answer/smoke_local.py --leave
 
 ## Deploy to App Runner
 
+**Prerequisite:** `AGENTCORE_RUNTIME_ARN` in root `.env` (from `runtime/` deploy output).
+
 ```bash
+grep AGENTCORE_RUNTIME_ARN ../.env   # from repo root
+
 # First deploy (creates ECR, IAM roles, App Runner service)
 AWS_PROFILE=vonage-dev bash answer/deploy.sh --inline-private-key
+# Expect log line: ==> AgentCore runtime ARN: arn:aws:bedrock-agentcore:...
 
 # Updates (rebuild image + rollout + refresh IAM)
 AWS_PROFILE=vonage-dev bash answer/deploy.sh --inline-private-key --update-only
@@ -125,13 +134,21 @@ VONAGE_SECRET_ARN='arn:aws:secretsmanager:us-east-1:589536902306:secret:...' \
 
 IAM policy templates: [`apprunner-instance-policy-inline.json`](apprunner-instance-policy-inline.json), [`apprunner-instance-policy.json`](apprunner-instance-policy.json).
 
+**Full IAM reference:** [docs/AWS_IAM.md](../docs/AWS_IAM.md) — developer vs App Runner vs AgentCore roles, SCP constraints, least privilege.
+
 ---
 
-## Production client flow (Phase 2)
+## Next steps (optional)
 
-```text
-1. React app creates Vonage session + participant token
-2. User clicks "Start AI"
-3. POST /start-agent { session_id, token } → App Runner URL
-4. Agent joins session; user hears Nova Sonic nurse triage
-```
+Michael's AgentCore requirement is **met** with Playground + App Runner as the demo client. These are deferred enhancements:
+
+**Legacy Phase 2 — React client (`client/`)**
+
+- Fork Vonage Video React JS Reference App, add Start AI → App Runner `/start-agent`, CORS on `answer/`
+
+**Optional hardening**
+
+- Secrets Manager for Vonage key (replace `--inline-private-key` POC)
+- Customer deploy guide and blog post
+
+See root [`README.md`](../README.md) for architecture and milestone status.

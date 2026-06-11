@@ -33,7 +33,11 @@ def main() -> None:
     aws_session_token = os.getenv("AWS_SESSION_TOKEN", "").strip()
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
     aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
-    runtime_arn = os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+    runtime_arn = (
+        os.getenv("AGENTCORE_RUNTIME_ARN", "").strip()
+        or os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
+        or os.getenv("AGENTCORE_AGENT_ARN", "").strip()
+    )
     bedrock_connect_timeout_seconds = int(os.getenv("BEDROCK_CONNECT_TIMEOUT_SECONDS", "10").strip() or "10")
     bedrock_read_timeout_seconds = int(os.getenv("BEDROCK_READ_TIMEOUT_SECONDS", "60").strip() or "60")
     bedrock_max_attempts = int(os.getenv("BEDROCK_MAX_ATTEMPTS", "4").strip() or "4")
@@ -88,7 +92,7 @@ def main() -> None:
         sys.exit(1)
 
     if not runtime_arn:
-        print("ERROR: Missing AGENTCORE_AGENT_ARN")
+        print("ERROR: Missing AGENTCORE_RUNTIME_ARN")
         print("  Set the ARN of an existing AgentCore runtime in .env or your shell before running this test.")
         sys.exit(1)
 

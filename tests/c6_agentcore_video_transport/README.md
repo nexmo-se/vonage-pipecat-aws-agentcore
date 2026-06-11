@@ -87,7 +87,6 @@ tests/c6_agentcore_video_transport/
 ├── test_integration.py        Stage 0
 ├── test_agentcore_video.py    Stages 2–5 invoke runner
 ├── .bedrock_agentcore.yaml    Legacy c6_video_agent config
-└── CONTEXT.md                 C6-specific architecture notes + findings
 ```
 
 **Production deploy:** use [`runtime/`](../../runtime/README.md) (`video_agent`). This folder is the **test harness** + legacy `c6_video_agent` config.
@@ -102,8 +101,7 @@ Root `.env`:
 VONAGE_APPLICATION_ID=<your-app-id>
 VONAGE_PRIVATE_KEY=private.key
 VONAGE_SESSION_ID=...            # from C1 (refreshed every C1 run)
-AGENTCORE_AGENT_ARN=arn:...:runtime/video_agent-ErxQpSHrDP
-C6_AGENTCORE_RUNTIME_ARN=arn:...:runtime/video_agent-ErxQpSHrDP   # same ARN; test harness reads either
+AGENTCORE_RUNTIME_ARN=arn:...:runtime/video_agent-ErxQpSHrDP   # after runtime/ deploy; answer/deploy.sh reads this
 BEDROCK_INITIAL_USER_MESSAGE=... # nurse triage opening (must be in deploy --env)
 AGENTCORE_BOOTSTRAP_PROMPT=...   # nurse triage persona (must be in deploy --env)
 ```
@@ -204,7 +202,7 @@ Joins a Vonage session with `mode: echo` and polls `status` until `connected: tr
 | `c6_video_agent-ALpVCJGN0S` (June 2026 early) | ❌ Fail | Signaling OK; zero inbound RTP frames |
 | `video_agent-ErxQpSHrDP` (June 2026) | ✅ Pass | `runtime/agent.py`, Python 3.13, `enable_rtvi=False` |
 
-See root [`CONTEXT.md`](../../CONTEXT.md) for architecture and Michael-ready summary.
+See root [`README.md`](../../README.md) for architecture and milestone status.
 
 ---
 

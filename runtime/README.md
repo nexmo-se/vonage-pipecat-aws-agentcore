@@ -17,12 +17,29 @@ AgentCore Runtime (this folder — ARM64 container)
 
 Orchestration (session + invoke) lives in [`../answer/`](../answer/).
 
+## Pipecat pipeline
+
+Nova Sonic mode (production default) in `agent.py`:
+
+```text
+VonageVideoConnectorTransport.input()
+  → LLMContextAggregatorPair.user()
+  → AWSNovaSonicLLMService (amazon.nova-2-sonic-v1:0)
+  → LLMContextAggregatorPair.assistant()
+  → VonageVideoConnectorTransport.output()
+```
+
+On join, the agent seeds `LLMContextFrame` + `LLMRunFrame` to avoid Nova Sonic idle timeout.
+
+Echo mode (C6 debug): `transport.input()` → audio tap → echo processor → `transport.output()`.
+
 ## Prerequisites
 
 - Docker Desktop (for `--local-build` on macOS)
 - `agentcore` CLI in repo-root `.venv` (`uv pip install bedrock-agentcore-starter-toolkit` from repo root)
 - Root `.env`: `VONAGE_APPLICATION_ID`, `AWS_PROFILE`, `BEDROCK_MODEL_ID`, persona vars
 - `private.key` in repo root
+- **IAM:** AgentCore deploy permissions + execution role with ECR pull and Bedrock invoke — see [docs/AWS_IAM.md](../docs/AWS_IAM.md)
 
 ## Deploy
 
@@ -69,9 +86,8 @@ AWS_PROFILE=vonage-dev ../.venv/bin/agentcore deploy \
   --env "BEDROCK_INITIAL_USER_MESSAGE=${BEDROCK_INITIAL_USER_MESSAGE}" \
   --env "AGENTCORE_BOOTSTRAP_PROMPT=${AGENTCORE_BOOTSTRAP_PROMPT}"
 
-# 3) Set runtime ARN in root .env from deploy output
-# AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:...:runtime/video_agent-...
-# C6_AGENTCORE_RUNTIME_ARN=<same ARN>
+# 3) Set runtime ARN in root .env from deploy output (required before answer/deploy.sh)
+# AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:...:runtime/video_agent-...
 ```
 
 Skip step 2a if `runtime/.bedrock_agentcore.yaml` already exists. If deploy fails with
@@ -87,6 +103,8 @@ Root `.env` is **not** read inside the container. Persona must be passed at depl
 |---|---|
 | `AGENTCORE_BOOTSTRAP_PROMPT` | Nova Sonic `system_instruction` (behavior / persona) |
 | `BEDROCK_INITIAL_USER_MESSAGE` | Required opening line the agent speaks first |
+
+Root `.env` vars **not read** inside the AgentCore container: `NOVA_SESSION_*`, `BEDROCK_CONNECT_TIMEOUT_SECONDS`, `BEDROCK_VALIDATE_MODEL_ID` (those apply to local `app/` only).
 
 After `--stage full`, check CloudWatch for `opening_chars=N`. If `N=0`, redeploy with `set -a && source ../.env` before deploy.
 

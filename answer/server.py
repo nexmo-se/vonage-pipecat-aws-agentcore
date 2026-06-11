@@ -6,7 +6,7 @@ POST /start-agent  { "session_id": "...", "token": "..." }  → invoke AgentCore
 GET  /status       → poll AgentCore pipeline status (same runtimeSessionId)
 POST /leave        → stop AgentCore pipeline
 
-Requires AGENTCORE_RUNTIME_ARN (or C6_AGENTCORE_RUNTIME_ARN) and Vonage creds in env.
+Requires AGENTCORE_RUNTIME_ARN (legacy fallbacks: C6_AGENTCORE_RUNTIME_ARN, AGENTCORE_AGENT_ARN) and Vonage creds in env.
 """
 
 from __future__ import annotations

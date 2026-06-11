@@ -8,7 +8,7 @@ Usage:
   python test_agentcore_video.py --stage full
   python test_agentcore_video.py --stage status
 
-Requires AGENTCORE_AGENT_ARN (C6 runtime ARN after deploy) in root .env.
+Requires AGENTCORE_RUNTIME_ARN (after runtime/ deploy) in root .env.
 """
 
 from __future__ import annotations
@@ -64,7 +64,8 @@ def _test_session_credentials() -> tuple[str, str]:
 
 def _runtime_arn() -> str:
     return (
-        os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
+        os.getenv("AGENTCORE_RUNTIME_ARN", "").strip()
+        or os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
         or os.getenv("AGENTCORE_AGENT_ARN", "").strip()
     )
 
@@ -156,7 +157,7 @@ def _create_client() -> tuple[Any, str]:
     aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
     runtime_arn = _runtime_arn()
     if not runtime_arn:
-        print("ERROR: C6_AGENTCORE_RUNTIME_ARN or AGENTCORE_AGENT_ARN not set")
+        print("ERROR: AGENTCORE_RUNTIME_ARN not set — copy ARN from agentcore deploy output")
         print("  Deploy agentcore_video_agent.py first, then set the runtime ARN in .env")
         sys.exit(1)
 

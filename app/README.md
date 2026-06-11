@@ -1,6 +1,8 @@
-# app — Full Integrated Agent
+# app — Local Integrated Agent (dev only)
 
-This is the complete application that wires all components together:
+**Not the production deploy path.** Production uses [`runtime/`](../runtime/README.md) on AgentCore + [`answer/`](../answer/README.md) on App Runner. This folder is for fast local iteration after C1–C4b.
+
+The complete local application wires:
 
 - **Vonage Video Connector Pipecat transport** — joins the video session and bridges media into Pipecat
 - **Pipecat pipeline** — real-time audio processing and session orchestration
@@ -15,7 +17,7 @@ These services are complementary:
 - **Amazon Bedrock** is the model inference layer for live conversation (Nova Sonic / Nova Lite).
 - **Amazon Bedrock AgentCore** is the managed runtime layer for deployable agent app logic.
 
-In this app, Bedrock powers real-time model responses, while AgentCore is optionally invoked at startup (when `AGENTCORE_AGENT_ARN` is set) to prime assistant behavior.
+In this app, Bedrock powers real-time model responses, while AgentCore is optionally invoked at startup (when `AGENTCORE_RUNTIME_ARN` or legacy `AGENTCORE_AGENT_ARN` is set) to prime assistant behavior.
 
 Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
 
@@ -30,7 +32,7 @@ This app uses the **transport** route, not the serializer route. In practice tha
 | Option                           | Architecture Shape                                                                    | Choose It When                                                                                              | Official Vonage Docs                                                                                                                                                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Transport** (implemented here) | Browser/WebRTC <-> Vonage Video Session <-> Video Connector SDK <-> Pipecat transport | You need AI as a session participant in a shared Vonage Video room with join/leave/publish semantics        | [Vonage Pipecat Transport Guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport), [Vonage Video Connector Guide](https://developer.vonage.com/en/video/guides/vonage-video-connector) |
-| **Serializer** (planned Phase 2) | Voice/media stream <-> serializer/WebSocket bridge <-> Pipecat                        | You need telephony-oriented or protocol-level media event control, without room-style participant semantics | [Vonage Audio Connector Guide](https://developer.vonage.com/en/video/guides/audio-connector), [Vonage Voice API Overview](https://developer.vonage.com/en/voice/overview)                                                    |
+| **Serializer** (companion repo) | Voice/media stream ↔ serializer/WebSocket bridge ↔ Pipecat | Telephony-oriented streams without room-style participant semantics | [`vonage-pipecat-serializer-voice-aws-agentcore`](https://github.com/nexmo-se/vonage-pipecat-serializer-voice-aws-agentcore) |
 
 **Platform: Linux** (Vonage Video Connector SDK is a native Linux binary). Use Docker on macOS.
 
@@ -54,7 +56,11 @@ Vonage Video Platform
 │    └── /ws  WebSocket management     │
 │                                      │
 │  Pipecat Pipeline                    │
-│    VonageVideoConnectorTransport ──► Nova Sonic ──► VonageVideoConnectorTransport
+│    transport.input()                 │
+│      → context aggregator (user)     │
+│      → Nova Sonic (Bedrock)          │
+│      → context aggregator (assistant)│
+│      → transport.output()            │
 │                                      │
 │  Optional startup bootstrap          │
 │    AgentCore Runtime ──► initial response style/context
@@ -93,38 +99,16 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-## Deploy to Production
+## Production path
 
-`docker compose` is the local/dev path. For production, deploy this app on Linux infrastructure.
+Do **not** deploy `app/` for production. Deploy two artifacts instead:
 
-Recommended targets:
+1. [`runtime/`](../runtime/README.md) — full agent on **AgentCore Runtime** (`agentcore deploy`)
+2. [`answer/`](../answer/README.md) — thin orchestrator on **App Runner** (`POST /start-agent` → `InvokeAgentRuntime`)
 
-- **EC2 (single host)**: fastest path from POC to first production deployment.
-- **Managed containers**: ECS/Fargate (or EKS/App Runner) for rolling deployments, autoscaling, and managed operations.
+Validated App Runner URL: `https://x9bqavn3zv.us-east-1.awsapprunner.com`
 
-### Production Responsibilities (AWS)
-
-- **Amazon Bedrock**: model inference platform.
-- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
-- **Amazon Bedrock AgentCore Runtime**: optional managed runtime bootstrap path in this sample.
-
-Use the correct AWS API surface per call path:
-
-- `bedrock` for control plane model operations ([AWS Bedrock API methods](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html))
-- `bedrock-runtime` for inference data plane calls ([AWS Bedrock Runtime examples](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModel_AnthropicClaude_section.html))
-- `bedrock-agentcore` for AgentCore runtime invocation ([AWS Bedrock AgentCore Data Plane API](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html))
-
-### Minimum Production Checklist
-
-- **Linux runtime**: deploy on Linux (native or container) for Video Connector compatibility.
-- **Credentials**: use IAM roles or short-lived credentials; avoid long-lived static keys ([IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)).
-- **Least privilege**: scope Bedrock, AgentCore, logs, and secrets permissions to only required actions/resources.
-- **Secrets management**: store secrets in AWS Secrets Manager or SSM Parameter Store (not plaintext `.env` in images/repos).
-- **Model/region readiness**: verify model ID support and quotas in target region before rollout ([Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)).
-- **Observability**: collect CloudWatch metrics/logs and enable CloudTrail for API auditing ([Bedrock monitoring](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html), [Bedrock CloudTrail](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html)).
-- **Retries/timeouts**: tune SDK retries/timeouts for voice latency and resilience ([AWS SDK retry behavior](https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html)).
-- **Container security**: apply ECS/Fargate security best practices when containerized ([ECS security best practices](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/security-best-practices.html)).
-- **Session lifecycle**: monitor and tune `NOVA_SESSION_WARN_SECONDS`, `NOVA_SESSION_LIMIT_SECONDS`, and `NOVA_SESSION_STOP_ON_LIMIT` for long-lived calls.
+See root [README.md](../README.md) for the production demo flow (C1 → Playground → `smoke_local.py`).
 
 ## Runtime Notes
 
@@ -136,7 +120,9 @@ Use the correct AWS API surface per call path:
 - In Docker, the compose service mounts `${HOME}/.aws` to `/root/.aws` and `./private.key` to `/app/private.key`, so the app can reuse the AWS profile and Vonage key material already validated in the test folders.
 - If you want to stop the live pipeline without stopping the API process, call `POST /leave`.
 
-## Nova Sonic Reliability Notes
+## Nova Sonic Reliability Notes (local `app/` only)
+
+These env vars are implemented in `app/agent.py` only — **not** in production `runtime/agent.py`:
 
 - AWS Nova Sonic sessions have a practical connection window (about 8 minutes in AWS guidance).
 - The app now emits `session_renewal_recommended` before that window expires so callers can refresh via `POST /leave` + `POST /join`.
@@ -223,14 +209,14 @@ All variables are loaded from the root `.env` file (see `.env.example`):
 | `AWS_SECRET_ACCESS_KEY`           | AWS secret key (optional fallback if not using profile)                            |
 | `AWS_REGION`                      | AWS region (default: `us-east-1`)                                                  |
 | `BEDROCK_MODEL_ID`                | Nova Sonic model ID (default: `amazon.nova-2-sonic-v1:0`)                          |
-| `BEDROCK_CONNECT_TIMEOUT_SECONDS` | Bedrock API connect timeout in seconds (default: `10`)                             |
-| `BEDROCK_READ_TIMEOUT_SECONDS`    | Bedrock API read timeout in seconds (default: `60`)                                |
-| `BEDROCK_MAX_ATTEMPTS`            | Bedrock API max retry attempts, standard mode (default: `4`)                       |
-| `BEDROCK_VALIDATE_MODEL_ID`       | Validate `BEDROCK_MODEL_ID` at startup; fail fast on invalid IDs (default: `true`) |
-| `AGENTCORE_AGENT_ARN`             | Optional AgentCore runtime ARN used for startup bootstrap                          |
-| `NOVA_SESSION_WARN_SECONDS`       | Emit renewal recommendation event after this many seconds (default: `410`)         |
-| `NOVA_SESSION_LIMIT_SECONDS`      | Session limit threshold used by monitor telemetry (default: `470`)                 |
-| `NOVA_SESSION_STOP_ON_LIMIT`      | When `true`, cancels the pipeline at the limit to force renewal (default: `false`) |
+| `BEDROCK_CONNECT_TIMEOUT_SECONDS` | Bedrock API connect timeout in seconds (default: `10`) — **local `app/` only** |
+| `BEDROCK_READ_TIMEOUT_SECONDS`    | Bedrock API read timeout in seconds (default: `60`) — **local `app/` only** |
+| `BEDROCK_MAX_ATTEMPTS`            | Bedrock API max retry attempts, standard mode (default: `4`) — **local `app/` only** |
+| `BEDROCK_VALIDATE_MODEL_ID`       | Validate `BEDROCK_MODEL_ID` at startup; fail fast on invalid IDs (default: `true`) — **local `app/` only** |
+| `AGENTCORE_RUNTIME_ARN`         | Optional AgentCore runtime ARN for startup bootstrap (legacy: `AGENTCORE_AGENT_ARN`) |
+| `NOVA_SESSION_WARN_SECONDS`       | Emit renewal recommendation event after this many seconds (default: `410`) — **local `app/` only** |
+| `NOVA_SESSION_LIMIT_SECONDS`      | Session limit threshold used by monitor telemetry (default: `470`) — **local `app/` only** |
+| `NOVA_SESSION_STOP_ON_LIMIT`      | When `true`, cancels the pipeline at the limit to force renewal (default: `false`) — **local `app/` only** |
 | `PORT`                            | FastAPI port (default: `8000`)                                                     |
 
 ---

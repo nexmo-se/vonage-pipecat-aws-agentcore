@@ -24,6 +24,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${SCRIPT_DIR}"
 
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${REPO_ROOT}/.env"
+  set +a
+fi
+
 AWS_PROFILE="${AWS_PROFILE:-vonage-dev}"
 export AWS_PROFILE
 REGION="${AWS_REGION:-us-east-1}"
@@ -33,14 +40,9 @@ SERVICE_NAME="vonage-video-answer"
 SECRET_NAME="vonage/video/answer-private-key"
 INSTANCE_ROLE="vonage-video-answer-apprunner-instance"
 ACCESS_ROLE="vonage-video-answer-apprunner-access"
-RUNTIME_ARN="${AGENTCORE_RUNTIME_ARN:-arn:aws:bedrock-agentcore:${REGION}:${ACCOUNT_ID}:runtime/video_agent-ErxQpSHrDP}"
-
-if [[ -f "${REPO_ROOT}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${REPO_ROOT}/.env"
-  set +a
-fi
+DEFAULT_RUNTIME_ARN="arn:aws:bedrock-agentcore:${REGION}:${ACCOUNT_ID}:runtime/video_agent-ErxQpSHrDP"
+RUNTIME_ARN="${AGENTCORE_RUNTIME_ARN:-${C6_AGENTCORE_RUNTIME_ARN:-${AGENTCORE_AGENT_ARN:-${DEFAULT_RUNTIME_ARN}}}}"
+echo "==> AgentCore runtime ARN: ${RUNTIME_ARN}"
 
 VONAGE_APPLICATION_ID="${VONAGE_APPLICATION_ID:-}"
 if [[ -z "${VONAGE_APPLICATION_ID}" ]]; then

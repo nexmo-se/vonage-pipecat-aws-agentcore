@@ -1,659 +1,235 @@
 # vonage-pipecat-aws-agentcore
 
-Real-time AI voice and video agents using **Vonage Video**, **Pipecat**, **Amazon Nova Sonic**, and **Amazon Bedrock AgentCore Runtime**.
+Deploy AI Agent into a Vonage Video Session using **Vonage Video Transport for Pipecat**, **Amazon Nova Sonic**, and **Amazon Bedrock AgentCore Runtime**.
+
+**Status (June 2026):** Milestone complete — full agent on AgentCore + App Runner orchestrator + Playground demo.
 
 ---
 
 ## Overview
 
-This repository is an opinionated sample app and blog companion that combines:
+Browser users join a Vonage Video session; the AI agent joins as a native WebRTC participant via **Vonage Video Transport for Pipecat** (`VonageVideoConnectorTransport`), listens and speaks through **Nova Sonic**, and runs in production on **AgentCore Runtime**.
 
-- **Amazon Bedrock AgentCore Runtime** as the managed runtime that hosts the agent logic
-- **Amazon Nova Sonic** as the low-latency speech-to-speech model inside the Pipecat pipeline
-- **Vonage Video API + Video Connector transport** as the real-time session layer that connects browser participants to the agent
-- **Pipecat** as the orchestration layer that moves media between the transport and the model
+| Component | Role |
+| --- | --- |
+| **Vonage Video Transport for Pipecat** | Pipecat transport — `VonageVideoConnectorTransport` joins the session as a WebRTC participant |
+| **Vonage Video API** | Session management and media routing |
+| **Pipecat** | Pipeline orchestration (context aggregators + frame routing) |
+| **Amazon Nova Sonic** | Speech-to-speech inference (Bedrock) |
+| **Amazon Bedrock AgentCore** | Managed runtime hosting `runtime/agent.py` |
 
-Unlike direct client-to-agent transport examples, this sample uses **Vonage Video as the live session layer**. Browser users join a Vonage session, and the AI agent joins that same session through the **Vonage Video Connector Pipecat transport**.
+### Architecture
 
-Architecture responsibilities in this sample:
+**Production** — `runtime/` on AgentCore + `answer/` on App Runner:
 
-- **AWS AgentCore**: where the agent runs
-- **Nova Sonic**: how the agent listens and speaks
-- **Vonage Video**: how the agent joins and participates in live calls
+![Production architecture](images/architecture-overview-production.png)
 
-Core building blocks:
+1. User joins a Vonage session in Playground and publishes their mic.
+2. `smoke_local.py` (or future React client) calls `POST /start-agent` on App Runner (`answer/`).
+3. App Runner invokes AgentCore Runtime (`InvokeAgentRuntime`).
+4. **Vonage Video Transport for Pipecat** joins the same session as a WebRTC participant (SDK-managed TURN).
+5. **Pipecat** runs the pipeline and invokes **Amazon Nova Sonic on Bedrock** (speech-to-speech via AgentCore execution role).
+6. Agent audio is routed back through Vonage to the user.
 
-| Component                      | Role                                         |
-| ------------------------------ | -------------------------------------------- |
-| **Vonage Video API**           | Browser session management and media routing |
-| **Vonage Video Connector SDK** | Server-side session participant for Pipecat  |
-| **Pipecat AI**                 | Real-time media and model orchestration      |
-| **Amazon Nova Sonic**          | Low-latency speech-to-speech intelligence    |
-| **Amazon Bedrock AgentCore**   | Managed runtime for deployable agent logic   |
+**Note:** Nova Sonic runs inside the Pipecat pipeline. The AgentCore microVM calls Bedrock via IAM; App Runner only orchestrates — it does not run inference or media.
 
-### Architecture Overview
+### Pipecat pipeline
 
-![Architecture Diagram](images/architecture-overview.png)
+```text
+VonageVideoConnectorTransport.input()
+  → context aggregator (user)
+  → Amazon Nova Sonic (Bedrock)
+  → context aggregator (assistant)
+  → VonageVideoConnectorTransport.output()
+```
 
-## Bedrock and AgentCore
+Audio: 16 kHz mono in, 24 kHz mono out.
 
-These two AWS services are complementary.
+| | **Local** (`app/`) | **Production** (`runtime/` + `answer/`) |
+| --- | --- | --- |
+| **Host** | FastAPI in Docker on your laptop (`:8000`) | AgentCore Runtime (ARM64) + App Runner orchestrator |
+| **Start agent** | Auto-join on startup if `VONAGE_SESSION_ID` is set, or `POST /join` | `POST /start-agent` → `InvokeAgentRuntime` with `action: join` |
+| **Session ID** | Static in root `.env` (from C1) | Per request in invoke payload |
+| **Vonage token** | Generated inside `app/agent.py` | Passed by client (`smoke_local.py`) or minted by `answer/server.py` / `runtime/agent.py` if omitted |
+| **Persona** | Root `.env` → LLM context messages | `agentcore deploy --env` → Nova Sonic `system_instruction` |
+| **Bedrock creds** | Developer `AWS_PROFILE` (mounted in Docker) | AgentCore execution role IAM |
+| **Pipeline modes** | Nova Sonic only | `nova_sonic` (default) or `echo` (debug) |
+| **Orchestration API** | Self-contained — no `answer/` | `GET /`, `POST /start-agent`, `GET /status`, `POST /leave` on App Runner |
+| **Local-only extras** | Nova session renewal monitor, Bedrock model validation, `WS /ws` events | `network_probe` action, CloudWatch logging, pipeline lock |
 
-| Layer                           | Service                      | What it does in this project                                                                      |
-| ------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| **Model inference layer**       | **Amazon Bedrock**           | Runs model inference (Nova Lite / Nova Sonic) for language and speech generation.                 |
-| **Managed agent runtime layer** | **Amazon Bedrock AgentCore** | Hosts deployable agent application logic and returns bootstrap instructions/persona when enabled. |
+Production invoke payload (via App Runner):
 
-How they work together in this repository:
+```json
+{"action":"join","session_id":"...","token":"...","mode":"nova_sonic"}
+```
 
-1. **Bedrock (C4b)** provides live model capabilities during conversation.
-2. **AgentCore (C5)** provides managed, deployable agent logic.
-3. In `app/`, AgentCore can be invoked at session start (when `AGENTCORE_AGENT_ARN` is set) to prime behavior, while Bedrock/Nova handles live inference.
+Use the same `runtimeSessionId` for `status` and `leave` after a join (`answer/server.py` tracks this in memory per App Runner instance).
 
-Decision rule:
+### AgentCore runtime ARN (required for production)
 
-- Use **Bedrock only** for quick model-driven prototypes.
-- Add **AgentCore + Bedrock** when you need managed deployment, versioned runtime logic, tool/memory workflows, or governance/auditability.
-
-Short version: **Bedrock answers; AgentCore runs deployable agent app logic.**
-
-This repository currently implements the **Transport** path; see **Transport vs Serializer** below for architecture tradeoffs and selection guidance.
-
-## Transport vs Serializer
-
-Both integration options are valid, but they solve different problems.
-
-### Option A: Transport (current repository implementation)
-
-Architecture shape:
-
-`Browser WebRTC <-> Vonage Video Platform <-> Video Connector SDK <-> Pipecat transport pipeline`
-
-Characteristics:
-
-- Agent joins as a real participant in a Vonage Video session.
-- Media transport, session membership, and participant lifecycle come from Vonage Video.
-- Best fit for browser/mobile video session experiences where humans and AI share the same live room.
-
-Choose Transport when:
-
-- You need WebRTC session semantics (join/leave, publish/subscribe, participant events).
-- You are building meeting-style or in-app video/audio rooms.
-- You want to reuse Vonage Video session controls and moderation patterns.
-
-### Option B: Serializer (planned Phase 2)
-
-Architecture shape:
-
-`Voice/telephony media stream <-> serializer/WebSocket bridge <-> Pipecat pipeline`
-
-Characteristics:
-
-- Focuses on serialized media events over WebSocket instead of session-participant transport.
-- Better aligned with telephony and non-room media streaming scenarios.
-- Usually requires explicit handling for stream protocol details and event mapping.
-
-Choose Serializer when:
-
-- Your primary channel is voice/telephony rather than shared video sessions.
-- You need custom stream event control at the protocol/message layer.
-- You do not need an AI participant to appear as a native Vonage Video session member.
-
-### Quick decision guide
-
-- Pick **Transport** for Vonage Video session-native AI participants.
-- Pick **Serializer** for telephony-oriented or protocol-level streaming integrations.
-
-## Delivery Phases
-
-This repository is being delivered in phases to keep the POC fast while preserving the broader product request.
-
-- **Phase 1 (current): Transport/Video**
-  Vonage Video API + Video Connector transport, Pipecat transport pipeline, Amazon Nova Sonic integration, and AWS Bedrock AgentCore runtime deploy/invoke.
-- **Phase 2 (planned): Serializer/Voice**
-  Vonage Voice telephony use case path, Pipecat serializer/WebSocket integration, and architecture guidance for when serializer is preferred over transport.
-
-## Positioning
-
-Use this repository as both:
-
-- a **sample app** for validating each layer independently before running the full integrated agent
-- a **reference implementation** for a blog post that explains how Vonage Video, Pipecat, Nova Sonic, and AgentCore fit together
-
-The validation flow in `tests/` intentionally decomposes the stack so you can prove each dependency separately before combining them in `app/`.
-
----
-
-## Test Components & Validation Path
-
-The repository includes six modular validation stages (`C1`, `C2`, `C3`, `C4a`, `C4b`, `C5`) that validate each layer of the stack in isolation before combining them in `app/`. Run them in order to build confidence in the full integration.
-
-### C1: Vonage Video Session Creation
-
-**What it validates:** Vonage Video API authentication, session provisioning, and client token generation.
-
-**Purpose:**
-
-- Confirms your Vonage Video API credentials are correct.
-- Creates a persistent `VONAGE_SESSION_ID` for use in downstream tests.
-- Generates a browser playground URL so you can manually verify session access.
-
-**When you're done:** You have a real Vonage session ID stored in `.env` and can join that session in the browser.
-
-**Platform:** Any (macOS, Linux, Windows)
-
----
-
-### C2: Vonage Video Connector SDK
-
-**What it validates:** The native **Vonage Video Connector SDK** can join a Vonage Video session as a server-side WebRTC participant.
-
-**Purpose:**
-
-- Proves the Video Connector SDK is installed and compatible with the Linux runtime environment.
-- Verifies the SDK can authenticate to Vonage and establish media connection.
-- Demonstrates the bridge between Vonage Video session and Pipecat pipeline (foundation for C3).
-
-**When you're done:** You see the Video Connector participant appear in the Vonage session (via Playground or other browser client).
-
-**Platform:** Linux only (Docker on macOS)
-
----
-
-### C3: Pipecat Transport Echo Bot
-
-**What it validates:** **Pipecat orchestration** combined with **Vonage Video Connector transport** as an echo bot.
-
-**Purpose:**
-
-- Confirms Pipecat can receive audio frames from the Vonage session and replay them back in real time.
-- Validates the full media pipeline (browser → Vonage → Video Connector → Pipecat → back to Vonage → browser).
-- Tests transport frame handling without adding model/LLM complexity yet.
-
-**When you're done:** You can speak in the Vonage Playground, hear your audio echoed back by the agent, and confirm round-trip latency is acceptable.
-
-**Platform:** Linux only (Docker on macOS)
-
----
-
-### C4a: AWS Bedrock Credential Check
-
-**What it validates:** AWS Bedrock credentials, model access, and baseline text inference before the full speech path.
-
-**Purpose:**
-
-- Confirms AWS credentials and region settings are correct.
-- Verifies Bedrock access to Nova Lite before running the heavier transport integration.
-- Gives you a lower-cost preflight step before the full Nova Sonic session test.
-
-**When you're done:** You have confirmed Bedrock connectivity and basic inference before moving to the integrated Nova Sonic transport stage.
-
-**Platform:** Linux / Docker
-
----
-
-### C4b: AWS Bedrock + Nova Sonic Integration
-
-**What it validates:** **AWS Bedrock LLM** and **Nova Sonic** speech-to-speech model integrated with the Vonage transport pipeline.
-
-**Purpose:**
-
-- Builds on C4a by combining verified Bedrock access with the Vonage transport path.
-- Demonstrates speech-to-speech inference (listen → generate text response → speak).
-- Validates end-to-end latency with real ML model (STT → LLM reasoning → TTS).
-
-**When you're done:** You can ask the agent a question in the Vonage Playground, and it responds naturally with AI-generated speech.
-
-**Platform:** Linux / Docker
-
----
-
-### C5: AWS Bedrock AgentCore Runtime
-
-**What it validates:** **AWS Bedrock AgentCore** deployment and invocation.
-
-**Purpose:**
-
-- Proves AgentCore runtime deployment (writing code, configuring, deploying to AWS).
-- Validates the `bedrock-agentcore` API for runtime invocation.
-- Demonstrates how AgentCore can provide dynamic initialization (e.g., persona, system prompt) that primes the Pipecat agent before media interaction.
-
-**AgentCore Role:**
-AgentCore is a managed AWS runtime that hosts deployable agent logic. In this project, it's used as an optional **bootstrap layer**—at session start, if `AGENTCORE_AGENT_ARN` is set, the app invokes AgentCore to fetch a priming message (e.g., custom instructions or persona). This message is injected into the Pipecat pipeline, customizing agent behavior before real-time conversation begins.
-
-**When you're done:** You have deployed a runtime to AWS, captured its ARN, and verified it can be invoked programmatically.
-
-**Platform:** Any (AWS credentials required)
-
----
-
-### C6: AgentCore + Vonage Video Connector (Production path)
-
-**What it validates:** Full `VonageVideoConnectorTransport` pipeline inside **Bedrock AgentCore Runtime** (Michael's requirement).
-
-- Deploy artifact: [`runtime/`](runtime/README.md) → `video_agent` (ARM64, Python 3.13)
-- Test harness: [`tests/c6_agentcore_video_transport/`](tests/c6_agentcore_video_transport/README.md)
-- **June 2026:** Stage 3 echo **pass** on `video_agent-ErxQpSHrDP` (agent joins Playground, distorted echo — same bar as C3)
-- Nova Sonic full (`--stage full`) requires persona vars in deploy `--env`
-
-**Flow:** C1 creates session → Playground connects → `test_agentcore_video.py --stage echo|full` invokes join → agent appears as second participant.
-
-**Platform:** macOS + Docker Desktop for `--local-build`, or CodeBuild default deploy
-
----
-
-## Full Application Flow
-
-Once all staged tests pass:
-
-1. **C1** confirms Vonage session access.
-2. **C2** confirms the Video Connector SDK can join a session.
-3. **C3** confirms Pipecat transport and echo behavior.
-4. **C4a** confirms Bedrock credentials and baseline text inference.
-5. **C4b** confirms Bedrock + Nova Sonic speech-to-speech inference.
-6. **C5** confirms AgentCore runtime deployment and bootstrap capability.
-7. **C6** confirms Vonage Video WebRTC + Pipecat inside AgentCore Runtime (production path).
-
-The `app/` folder combines C1–C4b for **local dev**. Production uses `runtime/` (AgentCore) + `answer/` (App Runner orchestrator, validated June 2026).
-
-**Phase 1 App Runner:** `https://x9bqavn3zv.us-east-1.awsapprunner.com` — see [`answer/README.md`](answer/README.md) and [`dev/june11-dev.txt`](dev/june11-dev.txt).
-
-- Uses the session from **C1**.
-- Joins via the connector from **C2**.
-- Orchestrates via Pipecat transport from **C3**.
-- Responds with AI speech via **C4b** (Nova Sonic).
-- Optionally primes behavior via **C5** (AgentCore bootstrap) in local `app/` only.
-
-Production AgentCore (`runtime/agent.py`) embeds Nova Sonic directly — persona via deploy `--env`:
-
-- `AGENTCORE_BOOTSTRAP_PROMPT` → system instruction
-- `BEDROCK_INITIAL_USER_MESSAGE` → required opening line
-
----
-
-## Architecture
-
-### Data Flow
-
-Inbound (Browser to Agent):
-
-1. Browser captures microphone audio via WebRTC.
-2. Vonage Video routes media to the Video Connector SDK participant.
-3. Pipecat receives audio frames via transport input.
-4. Nova Sonic + AgentCore process speech and response logic.
-
-Outbound (Agent to Browser):
-
-1. Nova Sonic generates response audio frames.
-2. Pipecat publishes frames through transport output.
-3. Vonage Video distributes audio to connected participants.
-
-### Frame Types (Pipecat)
-
-| Frame                      | Direction | Description                          |
-| -------------------------- | --------- | ------------------------------------ |
-| `AudioRawFrame`            | In / Out  | Raw PCM audio (16 kHz, mono, 16-bit) |
-| `UserStartedSpeakingFrame` | Internal  | VAD detected speech start            |
-| `UserStoppedSpeakingFrame` | Internal  | VAD detected speech end              |
-| `TranscriptionFrame`       | Internal  | STT output text                      |
-| `TextFrame`                | Internal  | AgentCore LLM response text          |
-
-### Security Notes
-
-- Keep credentials in `.env` (gitignored).
-- Rotate Vonage session tokens periodically (short expiry preferred).
-- Restrict management API exposure (`/join`, `/leave`, `/ws`) behind auth in production.
-- Scope AWS IAM permissions to required Bedrock and AgentCore actions only.
-
----
-
-## Prerequisites
-
-| Requirement                      | Notes                                                                               |
-| -------------------------------- | ----------------------------------------------------------------------------------- |
-| Python 3.11+                     | `python --version`                                                                  |
-| [uv](https://docs.astral.sh/uv/) | Optional — faster venv/install alternative to pip                                   |
-| Docker + Docker Compose          | Required for Linux-only tests (C2, C3, app)                                         |
-| Vonage account                   | [dashboard.nexmo.com](https://dashboard.nexmo.com) — create a Video API application |
-| AWS account                      | IAM user with `AmazonBedrockFullAccess` and AgentCore permissions                   |
-| AWS Bedrock model access         | Enable **Nova Sonic** and **Nova Lite** in us-east-1 Bedrock console                |
-
-## Setup Reference
-
-Python package baseline:
-
-| Package                  | Version (minimum) |
-| ------------------------ | ----------------- |
-| `vonage`                 | `>=4.0.0`         |
-| `vonage-video-connector` | `>=1.0.0`         |
-| `pipecat-ai`             | `>=0.0.50`        |
-| `boto3`                  | `>=1.34.0`        |
-| `bedrock-agentcore`      | `>=0.1.0`         |
-
-Bedrock model IDs used in this project:
-
-| Model             | ID                         |
-| ----------------- | -------------------------- |
-| Amazon Nova Sonic | `amazon.nova-2-sonic-v1:0` |
-| Amazon Nova Lite  | `amazon.nova-lite-v1:0`    |
-| Amazon Nova Pro   | `amazon.nova-pro-v1:0`     |
-
-Vonage Video recommendations:
-
-- Use `routed` media mode when using Video Connector.
-- Use `publisher` token role for the AI session participant.
-
----
-
-## Quick Start
+App Runner must know **which** AgentCore runtime to invoke. Set `AGENTCORE_RUNTIME_ARN` in root `.env` after `agentcore deploy`, **before** `answer/deploy.sh`:
 
 ```bash
-# 1. Clone
-git clone https://github.com/nexmo-se/vonage-pipecat-aws-agentcore.git
-cd vonage-pipecat-aws-agentcore
-
-# 2. Copy and fill in credentials
-cp .env.example .env
-# Edit .env with your VONAGE_APPLICATION_ID, private key path, and runtime/model settings
-
-# 3. Configure AWS profile (recommended)
-aws configure --profile vonage-dev
-# enter AWS Access Key ID, Secret Access Key, region (us-east-1), output (json)
-
-# verify profile works
-aws sts get-caller-identity --profile vonage-dev
-
-# use this profile for all test commands
-export AWS_PROFILE=vonage-dev
-
-# 4. Run tests in order (see each folder's README for details)
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:ACCOUNT:runtime/video_agent-...
 ```
 
-Before running the full app, `VONAGE_SESSION_ID` must exist in root `.env`. You can get it in either of these ways:
-
-1. **Generate automatically via C1 (recommended):**
-
-```bash
-cd tests/c1_vonage_video_session
-uv run --with python-dotenv --with vonage python test_session.py
-# this writes VONAGE_SESSION_ID into the root .env file
-```
-
-2. **Create/select manually via Vonage dashboard/tools:**
-
-- Use the same `VONAGE_APPLICATION_ID` and account configured in `.env`.
-- Create/select a Vonage Video session in Vonage dashboard/tools.
-- Copy the session ID and paste it into `.env` as `VONAGE_SESSION_ID=...`.
-
----
-
-## Test Folders
-
-Work through the tests in order to validate each layer of the stack before wiring everything together.
-
-| #   | Folder                                                                   | What it tests                                     | Platform       |
-| --- | ------------------------------------------------------------------------ | ------------------------------------------------- | -------------- |
-| C1  | [tests/c1_vonage_video_session](tests/c1_vonage_video_session/README.md) | Vonage Video session creation + client token      | Any            |
-| C2  | [tests/c2_video_connector_sdk](tests/c2_video_connector_sdk/README.md)   | Video Connector SDK joining as WebRTC participant | Linux / Docker |
-| C3  | [tests/c3_pipecat_transport](tests/c3_pipecat_transport/README.md)       | Pipecat echo bot over Vonage transport            | Linux / Docker |
-| C4a | [tests/c4a_aws_bedrock](tests/c4a_aws_bedrock/README.md)                 | Bedrock credential check + staged echo validation | Linux / Docker |
-| C4b | [tests/c4b_bedrock_nova_sonic](tests/c4b_bedrock_nova_sonic/README.md)   | AWS Bedrock + Nova Sonic speech-to-speech         | Linux / Docker |
-| C5  | [tests/c5_agentcore](tests/c5_agentcore/README.md)                       | AgentCore Runtime deploy + invoke hello world     | Any            |
-| C6  | [tests/c6_agentcore_video_transport](tests/c6_agentcore_video_transport/README.md) | AgentCore + Video Connector WebRTC (decision gate) | Any + ARM64 deploy |
-
----
-
-## Full Application
-
-Once all staged tests pass, run the complete agent:
-
-Note: the app does not create a Vonage session ID for you. `VONAGE_SESSION_ID` must already exist in `.env` (from C1 or from manual creation via Vonage dashboard/tools).
-
-```bash
-docker compose --profile app up --build     # repo root; macOS / non-Linux
-# or
-cd app
-uvicorn main:app --host 0.0.0.0 --port 8000   # native Linux
-```
-
-If `uv` is missing, install it first with `brew install uv` on macOS.
-
-What to expect from the running app:
-
-- `GET /` returns `{"status": "ok"}` when the API is live.
-- `GET /status` shows whether the auto-join pipeline is running and connected.
-- A normal fresh startup can report `running: true` with `connected: false` until a participant/client joins; `last_error` should remain `null`.
-- On Docker, the app mounts `${HOME}/.aws` and `./private.key` automatically so it can reuse the same AWS profile and Vonage key material validated in C4b/C5.
-
-Current runtime shape:
-
-- The FastAPI app auto-joins `VONAGE_SESSION_ID` on startup when it is present in `.env`.
-- The speech loop uses the same validated **Vonage Video Connector + Nova Sonic** path from C4b.
-- `AGENTCORE_AGENT_ARN` is used as an optional bootstrap step to shape the initial assistant behavior, not as a separate in-pipeline service hop.
-- The app monitor emits `session_renewal_recommended` before the Nova Sonic connection window expires so you can refresh with `POST /leave` then `POST /join`.
-
-### Voice Persona Options (Use-Case Configuration)
-
-The initial greeting and AI persona are controlled by `.env` values:
-
-- `BEDROCK_INITIAL_USER_MESSAGE` — Opening line the agent speaks first.
-- `AGENTCORE_BOOTSTRAP_PROMPT` — Persona / behavior (Nova Sonic system instruction in `runtime/agent.py`).
-
-**Local `app/`:** reads `.env` directly. **Production `runtime/`:** pass both vars via `agentcore deploy --env` after `source ../.env` (root `.env` is not mounted in the container).
-
-**Current default (active now): Nurse Triage Intake**
-
-This is the **primary use case** for this deployment. The agent acts as a nurse intake assistant and will:
-
-- Greet with triage context (not generic hello).
-- Ask one question at a time about symptoms, onset, and severity.
-- Collect red-flag indicators and escalate immediately if severe symptoms are reported.
-- Keep responses concise and empathetic.
-
-Use case is ideal for:
-
-- Post-visit follow-up triaging.
-- Symptom assessment before routing to appropriate care.
-- Medication adherence checks.
-- Preliminary safety screening.
-
-Current active settings (`.env.example` defaults):
-
-```dotenv
-BEDROCK_INITIAL_USER_MESSAGE=Hello, I am your nurse intake assistant. I will ask a few brief triage questions to help route your care quickly. What symptom are you experiencing now?
-AGENTCORE_BOOTSTRAP_PROMPT=You are a nurse triage voice assistant. Ask one short question at a time. Capture symptom, onset, severity from 1-10, and red flags. Keep responses concise and empathetic. If severe red-flag symptoms are mentioned, advise immediate emergency care and escalate.
-```
-
-**Rollback: Generic Greeting (Previous Default)**
-
-To restore the original generic greeting behavior, update `.env` and restart:
-
-```dotenv
-BEDROCK_INITIAL_USER_MESSAGE=Please greet the participant briefly and ask how you can help.
-AGENTCORE_BOOTSTRAP_PROMPT=Provide one short greeting plus one helpful follow-up question for a live voice assistant session.
-```
-
-Then restart:
-
-```bash
-docker compose --profile app down --remove-orphans
-docker compose --profile app up -d --build app
-```
-
-**Alternative Use Case: Post-Discharge Follow-Up Triage**
-
-```dotenv
-BEDROCK_INITIAL_USER_MESSAGE=Hi, this is a post-discharge nurse follow-up call. I will check your recovery and medication adherence. How are you feeling today compared to discharge day?
-AGENTCORE_BOOTSTRAP_PROMPT=You are a post-discharge nurse triage assistant. Collect recovery status, medication adherence, worsening symptoms, and follow-up completion. Be concise, supportive, and safety-first. Escalate immediately if symptoms worsen significantly.
-```
-
-To apply any persona change:
-
-1. Edit `.env` with the desired `BEDROCK_INITIAL_USER_MESSAGE` and `AGENTCORE_BOOTSTRAP_PROMPT` values.
-2. Restart app containers:
-
-```bash
-docker compose --profile app down --remove-orphans
-docker compose --profile app up -d --build app
-```
-
-3. Join Vonage Playground to test the new behavior.
-
-See [app/README.md](app/README.md) for full instructions.
-
-## Production Deployment
-
-Use `docker compose` for local validation only. For production, deploy on Linux infrastructure:
-
-- **Fastest path**: EC2/Linux VM running this app as a service or container.
-- **Recommended at scale**: ECS/Fargate (or EKS/App Runner) with CI/CD image deploys.
-
-Production responsibility split:
-
-- **Amazon Bedrock**: model inference platform.
-- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
-- **Amazon Bedrock AgentCore Runtime**: optional managed bootstrap/runtime logic.
-
-## Production Deployment
-
-Use `docker compose` for local validation only. For production, deploy on Linux infrastructure:
-
-- **Fastest path**: EC2/Linux VM running this app as a service or container.
-- **Recommended at scale**: ECS/Fargate (or EKS/App Runner) with CI/CD image deploys.
-
-Production responsibility split:
-
-- **Amazon Bedrock**: model inference platform.
-- **Amazon Nova Sonic**: speech-to-speech model used through Bedrock.
-- **Amazon Bedrock AgentCore Runtime**: optional managed bootstrap/runtime logic.
-
-Minimum production controls:
-
-- Use role-based IAM or temporary credentials (avoid long-lived static keys).
-- Keep least-privilege permissions for Bedrock, AgentCore, logging, and secrets.
-- Verify model IDs/region support and quotas before rollout.
-- Enable CloudWatch metrics/logs and CloudTrail auditing.
-
-Detailed deployment runbook: [app/README.md](app/README.md#deploy-to-production)
-
-AWS references:
-
-- [Amazon Bedrock API methods](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-api-methods.html)
-- [Amazon Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
-- [Amazon Bedrock monitoring](https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring.html)
-- [Amazon Bedrock CloudTrail logging](https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html)
-- [Amazon Bedrock AgentCore security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)
-- [AWS IAM best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html)
-
-### Ground-Up Validation Flow (Clean Restart)
-
-Use this exact sequence when validating end-to-end behavior from scratch.
-
-1. Stop all running app services:
-
-```bash
-# from repo root
-docker compose --profile app down --remove-orphans
-```
-
-1. Start the app fresh:
-
-```bash
-docker compose --profile app up -d --build app
-```
-
-1. Verify API health and runtime state:
-
-```bash
-curl http://localhost:8000/
-curl http://localhost:8000/status
-```
-
-1. If needed, force a clean leave/rejoin cycle:
-
-```bash
-SESSION_ID="$(grep '^VONAGE_SESSION_ID=' .env | cut -d= -f2-)"
-
-curl -X POST http://localhost:8000/leave
-curl -X POST http://localhost:8000/join \
-  -H "Content-Type: application/json" \
-  -d "{\"session_id\":\"${SESSION_ID}\"}"
-```
-
-1. Connect from Vonage Playground:
-
-- Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
-- Log in to the Vonage account that owns `VONAGE_APPLICATION_ID`
-- Join existing session using `VONAGE_SESSION_ID` from `.env`
-
-1. (Optional) Watch live app logs while testing:
-
-```bash
-docker compose --profile app logs -f app
-```
-
-1. Stop services after validation:
-
-```bash
-docker compose --profile app down --remove-orphans
-```
-
-### Acceptance Evidence (April 2026)
-
-Use this quick check after a Playground join/leave cycle to confirm app health and clean logs:
-
-```bash
-cd /path/to/vonage-pipecat-aws-agentcore
-curl -s http://localhost:8000/status
-docker compose --profile app logs --tail=300 app | \
-grep -E "participant_joined|client_connected|client_disconnected|participant_left|Monitor snapshot|ERROR|Exception|Traceback|RuntimeWarning|Timed out waiting for input events|was never awaited|connection reset by peer"
-```
-
-Expected result:
-
-- `running: true`, `last_error: null`, and `event_counts.errors: 0` in `/status`.
-- Join/leave counters increment during the Playground session.
-- No `ERROR`/`Exception`/`Traceback`/`RuntimeWarning` timeout or await-warning matches in filtered logs.
+| Where | Needs ARN? |
+| --- | --- |
+| **AgentCore** (`runtime/`) | No — it is the runtime |
+| **App Runner** (`answer/`) | **Yes** — injected by `answer/deploy.sh` from `.env` |
+| **`smoke_local.py`** | No — calls App Runner HTTPS; App Runner holds the ARN |
+
+Verify after deploy: `curl` App Runner `/` must return `"runtime_arn_set": true`.
+
+`answer/deploy.sh` reads the ARN from `.env` (sources `.env` first). Resolution order: `AGENTCORE_RUNTIME_ARN` → `C6_AGENTCORE_RUNTIME_ARN` → `AGENTCORE_AGENT_ARN` → hardcoded POC default. If all are unset, it falls back to the validated POC runtime — only use that if you deployed to the same runtime.
+
+### Why this shape
+
+1. **Staged tests (C1–C6)** — prove each layer before integration ([tests/README.md](tests/README.md)).
+2. **`app/`** — local dev on your laptop (C1–C4b patterns).
+3. **`runtime/`** — full agent in AgentCore.
+4. **`answer/`** — thin App Runner orchestrator (`POST /start-agent` → `InvokeAgentRuntime`).
+5. **Vonage SDK TURN** — AgentCore microVMs have no public IP; session-dynamic TURN at join.
 
 ---
 
 ## Repository Layout
 
 ```text
-vonage-pipecat-aws-agentcore/
-├── .env.example                  # Template for all credentials
-├── docker-compose.yml            # Linux container services (macOS-friendly)
-├── tests/
-│   ├── c1_vonage_video_session/  # Vonage Video session + token
-│   ├── c2_video_connector_sdk/   # Video Connector SDK (Linux/Docker)
-│   ├── c3_pipecat_transport/     # Pipecat echo bot (Linux/Docker)
-│   ├── c4b_bedrock_nova_sonic/   # Bedrock + Nova Sonic speech-to-speech
-│   └── c5_agentcore/             # AgentCore Runtime
-│   └── c6_agentcore_video_transport/  # AgentCore + Video Connector (decision gate)
-├── app/                          # Full integrated agent
-└── blog/                         # Blog post + images
+tests/      Staged validation C1–C6 — start here
+app/        Local integrated agent (dev only)
+runtime/    Production agent — AgentCore Runtime
+answer/     Production orchestrator — App Runner
+client/     Optional — Vonage React Reference App
 ```
 
-## Official Vonage References
+| Concern | Location |
+| --- | --- |
+| WebRTC + Nova Sonic | `runtime/agent.py` on AgentCore |
+| Start agent on demand | `answer/server.py` on App Runner |
+| Validate stack layer by layer | [tests/README.md](tests/README.md) |
+| Fast local iteration | [app/README.md](app/README.md) |
 
-This project intentionally cites Vonage-authored documentation as the primary source for API and SDK behavior.
+**Demo path:** C1 → Playground (join existing session) → `answer/smoke_local.py` → nurse triage.
 
-- [Vonage Video API overview](https://developer.vonage.com/en/video/overview)
-- [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
-- [Vonage Python SDK repository](https://github.com/Vonage/vonage-python-sdk)
-- [Vonage Python SDK Video API examples](https://github.com/Vonage/vonage-python-sdk/blob/main/video/README.md)
-- [Vonage Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
-- [Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
-- [Vonage Audio Connector guide (serializer/WebSocket related)](https://developer.vonage.com/en/video/guides/audio-connector)
-- [Vonage Voice API overview (Phase 2 Serializer/Voice scope)](https://developer.vonage.com/en/voice/overview)
+---
 
-## Official AWS Bedrock and Nova References
+## Quick Start
 
-Keep this minimal set for setup, API behavior, and model selection:
+```bash
+git clone https://github.com/nexmo-se/vonage-pipecat-aws-agentcore.git
+cd vonage-pipecat-aws-agentcore
 
-- [Amazon Bedrock API reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/welcome.html)
-- [Amazon Nova Sonic getting started](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-getting-started.html)
-- [Amazon Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
+cp .env.example .env
+# VONAGE_APPLICATION_ID, private key, AWS region (us-east-1)
+
+export AWS_PROFILE=vonage-dev
+aws sts get-caller-identity --profile vonage-dev
+```
+
+**1. Run staged tests** (C1 → C6 in order) — see **[tests/README.md](tests/README.md)** for index, validated results, and workflows.
+
+**2. Local app** (optional, after C1–C4b):
+
+```bash
+docker compose --profile app up --build
+```
+
+**3. Production deploy** (after C6):
+
+- [`runtime/README.md`](runtime/README.md) — AgentCore
+- [`answer/README.md`](answer/README.md) — App Runner orchestrator
+
+---
+
+## Bedrock vs AgentCore
+
+| Layer | Service | In this repo |
+| --- | --- | --- |
+| Model inference | **Amazon Bedrock** | Nova Sonic speech-to-speech in Pipecat |
+| Agent runtime | **Amazon Bedrock AgentCore** | Hosts full agent in `runtime/agent.py` |
+
+- **Local dev:** Bedrock + Pipecat in `app/` (C4b).
+- **Production:** entire pipeline in AgentCore + `answer/` for HTTP trigger.
+
+---
+
+## Transport vs Serializer
+
+This repo implements **Transport** (WebRTC session participant):
+
+`Browser ↔ Vonage Video ↔ Video Connector SDK ↔ Pipecat`
+
+**Serializer** (WebSocket / telephony) lives in the companion repo [`vonage-pipecat-serializer-voice-aws-agentcore`](https://github.com/nexmo-se/vonage-pipecat-serializer-voice-aws-agentcore).
+
+Pick **Transport** for in-app video/audio rooms. Pick **Serializer** for telephony-oriented streams.
+
+---
+
+## Production
+
+Deploy two artifacts **in order**:
+
+1. **`runtime/`** → `agentcore deploy` — the agent; copy runtime ARN to `.env` as `AGENTCORE_RUNTIME_ARN`
+2. **`answer/`** → `answer/deploy.sh` — orchestrator (reads `AGENTCORE_RUNTIME_ARN` from `.env` into App Runner)
+
+App Runner (validated): `https://x9bqavn3zv.us-east-1.awsapprunner.com`
+
+Validated runtime ARN: `arn:aws:bedrock-agentcore:us-east-1:589536902306:runtime/video_agent-ErxQpSHrDP`
+
+Persona in production — pass at deploy time, not via root `.env` inside the AgentCore container:
+
+- `AGENTCORE_BOOTSTRAP_PROMPT` → system instruction
+- `BEDROCK_INITIAL_USER_MESSAGE` → opening line
+
+Optional next steps (React client, Secrets Manager).
+
+---
+
+## AWS credentials and IAM
+
+This project uses **four AWS identities**: your developer profile (tests + deploy), AgentCore **execution role** (Bedrock + ECR in the microVM), App Runner **instance role** (`InvokeAgentRuntime`), and App Runner **access role** (ECR pull).
+
+**Full reference:** [docs/AWS_IAM.md](docs/AWS_IAM.md) — credentials setup, policies by stage (C4a–C6, deploy, production), SCP constraints, and policy JSON templates.
+
+Quick checklist:
+
+| Need | Where |
+| --- | --- |
+| CLI profile + model access | `AWS_PROFILE`, Bedrock console (Nova Sonic + Nova Lite) |
+| Deploy `runtime/` | AgentCore toolkit + `iam:PassRole` + ECR push ([runtime/README.md](runtime/README.md)) |
+| **`AGENTCORE_RUNTIME_ARN` in `.env`** | After `agentcore deploy`; required before `answer/deploy.sh` |
+| Deploy `answer/` | ECR, IAM roles, App Runner — sets ARN on service ([answer/README.md](answer/README.md)) |
+| Run C6 harness / local `answer/server.py` | Developer profile: `bedrock-agentcore:InvokeAgentRuntime` on your runtime ARN |
+| Run `smoke_local.py` vs App Runner | HTTPS to App Runner only — ARN lives on the service, not your shell |
+| Runtime in AWS | Execution role: Bedrock invoke + ECR pull on `bedrock-agentcore-<agent>` repo |
+
+---
+
+## Prerequisites
+
+| Requirement | Notes |
+| --- | --- |
+| Python 3.11+ | 3.13 for `runtime/` / C6 |
+| Docker | C2–C4b, local `app/` on macOS |
+| Vonage Video application | [dashboard.vonage.com](https://dashboard.vonage.com) |
+| AWS + Bedrock | Nova Sonic enabled in `us-east-1`; see [docs/AWS_IAM.md](docs/AWS_IAM.md) |
+
+---
+
+## References
+
+**Vonage**
+
+- [Video API overview](https://developer.vonage.com/en/video/overview)
+- [Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
+- [Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
+
+**AWS**
+
+- [Bedrock model IDs](https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html)
+- [Nova Sonic getting started](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-getting-started.html)
+- [AgentCore security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)
 
 ---
 

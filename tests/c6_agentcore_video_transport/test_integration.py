@@ -65,7 +65,8 @@ def main() -> None:
     session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
     runtime_arn = (
-        os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
+        os.getenv("AGENTCORE_RUNTIME_ARN", "").strip()
+        or os.getenv("C6_AGENTCORE_RUNTIME_ARN", "").strip()
         or os.getenv("AGENTCORE_AGENT_ARN", "").strip()
     )
     aws_profile = os.getenv("AWS_PROFILE", "").strip()
@@ -94,7 +95,7 @@ def main() -> None:
         check(
             "C6 runtime ARN",
             True,
-            "not set (ok before deploy — set C6_AGENTCORE_RUNTIME_ARN after agentcore deploy)",
+            "not set (ok before deploy — set AGENTCORE_RUNTIME_ARN after agentcore deploy)",
         )
 
     print("\n[CLI tooling]")
@@ -156,7 +157,7 @@ def main() -> None:
         print("  1. cd tests/c6_agentcore_video_transport")
         print("  2. agentcore configure -e agentcore_video_agent.py -r us-east-1")
         print("  3. AWS_PROFILE=vonage-dev agentcore deploy")
-        print("  4. Set AGENTCORE_AGENT_ARN in root .env")
+        print("  4. Set AGENTCORE_RUNTIME_ARN in root .env")
         print("  5. python test_agentcore_video.py --stage network")
         sys.exit(0)
 
