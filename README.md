@@ -227,6 +227,21 @@ AgentCore is a managed AWS runtime that hosts deployable agent logic. In this pr
 
 ---
 
+### C6: AgentCore + Vonage Video Connector (Production path)
+
+**What it validates:** Full `VonageVideoConnectorTransport` pipeline inside **Bedrock AgentCore Runtime** (Michael's requirement).
+
+- Deploy artifact: [`runtime/`](runtime/README.md) → `video_agent` (ARM64, Python 3.13)
+- Test harness: [`tests/c6_agentcore_video_transport/`](tests/c6_agentcore_video_transport/README.md)
+- **June 2026:** Stage 3 echo **pass** on `video_agent-ErxQpSHrDP` (agent joins Playground, distorted echo — same bar as C3)
+- Nova Sonic full (`--stage full`) requires persona vars in deploy `--env`
+
+**Flow:** C1 creates session → Playground connects → `test_agentcore_video.py --stage echo|full` invokes join → agent appears as second participant.
+
+**Platform:** macOS + Docker Desktop for `--local-build`, or CodeBuild default deploy
+
+---
+
 ## Full Application Flow
 
 Once all staged tests pass:
@@ -237,14 +252,20 @@ Once all staged tests pass:
 4. **C4a** confirms Bedrock credentials and baseline text inference.
 5. **C4b** confirms Bedrock + Nova Sonic speech-to-speech inference.
 6. **C5** confirms AgentCore runtime deployment and bootstrap capability.
+7. **C6** confirms Vonage Video WebRTC + Pipecat inside AgentCore Runtime (production path).
 
-The `app/` folder combines all five pieces into a complete agent:
+The `app/` folder combines C1–C4b for **local dev**. Production uses `runtime/` (AgentCore) + `answer/` (orchestration).
 
 - Uses the session from **C1**.
 - Joins via the connector from **C2**.
 - Orchestrates via Pipecat transport from **C3**.
 - Responds with AI speech via **C4b** (Nova Sonic).
-- Optionally primes behavior via **C5** (AgentCore bootstrap).
+- Optionally primes behavior via **C5** (AgentCore bootstrap) in local `app/` only.
+
+Production AgentCore (`runtime/agent.py`) embeds Nova Sonic directly — persona via deploy `--env`:
+
+- `AGENTCORE_BOOTSTRAP_PROMPT` → system instruction
+- `BEDROCK_INITIAL_USER_MESSAGE` → required opening line
 
 ---
 
@@ -376,6 +397,7 @@ Work through the tests in order to validate each layer of the stack before wirin
 | C4a | [tests/c4a_aws_bedrock](tests/c4a_aws_bedrock/README.md)                 | Bedrock credential check + staged echo validation | Linux / Docker |
 | C4b | [tests/c4b_bedrock_nova_sonic](tests/c4b_bedrock_nova_sonic/README.md)   | AWS Bedrock + Nova Sonic speech-to-speech         | Linux / Docker |
 | C5  | [tests/c5_agentcore](tests/c5_agentcore/README.md)                       | AgentCore Runtime deploy + invoke hello world     | Any            |
+| C6  | [tests/c6_agentcore_video_transport](tests/c6_agentcore_video_transport/README.md) | AgentCore + Video Connector WebRTC (decision gate) | Any + ARM64 deploy |
 
 ---
 
@@ -410,10 +432,12 @@ Current runtime shape:
 
 ### Voice Persona Options (Use-Case Configuration)
 
-The initial greeting and first-turn AI behavior are controlled by optional `.env` values:
+The initial greeting and AI persona are controlled by `.env` values:
 
-- `BEDROCK_INITIAL_USER_MESSAGE` — Seeded on session start; shapes first-turn context and tone.
-- `AGENTCORE_BOOTSTRAP_PROMPT` — Shapes AgentCore bootstrap persona (when `AGENTCORE_AGENT_ARN` is set).
+- `BEDROCK_INITIAL_USER_MESSAGE` — Opening line the agent speaks first.
+- `AGENTCORE_BOOTSTRAP_PROMPT` — Persona / behavior (Nova Sonic system instruction in `runtime/agent.py`).
+
+**Local `app/`:** reads `.env` directly. **Production `runtime/`:** pass both vars via `agentcore deploy --env` after `source ../.env` (root `.env` is not mounted in the container).
 
 **Current default (active now): Nurse Triage Intake**
 
@@ -603,6 +627,7 @@ vonage-pipecat-aws-agentcore/
 │   ├── c3_pipecat_transport/     # Pipecat echo bot (Linux/Docker)
 │   ├── c4b_bedrock_nova_sonic/   # Bedrock + Nova Sonic speech-to-speech
 │   └── c5_agentcore/             # AgentCore Runtime
+│   └── c6_agentcore_video_transport/  # AgentCore + Video Connector (decision gate)
 ├── app/                          # Full integrated agent
 └── blog/                         # Blog post + images
 ```

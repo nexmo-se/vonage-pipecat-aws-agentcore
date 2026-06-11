@@ -233,6 +233,7 @@ async def run_bedrock_echo_agent() -> None:
     task = PipelineTask(
         pipeline,
         params=PipelineParams(allow_interruptions=True),
+        enable_rtvi=False,
     )
 
     active_streams: set[str] = set()

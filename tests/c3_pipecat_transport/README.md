@@ -32,6 +32,10 @@ This C3 test validates that:
 
 When complete, you can speak in a browser participant, hear your audio echoed back by the agent, and confirm media flow through the entire Pipecat transport layer.
 
+> **Pipecat 1.3 note:** Playground is not an RTVI client — the bot sets `enable_rtvi=False` and converts `InputAudioRawFrame` → `OutputAudioRawFrame` for the output transport. Everything else matches the validated [14beb0c](https://github.com/nexmo-se/vonage-pipecat-aws-agentcore/commit/14beb0ccfb605d0e993b632fd283c17988024d35) / [2a0bfd1](https://github.com/nexmo-se/vonage-pipecat-aws-agentcore/commit/2a0bfd1b73627875782e20e9d2142717a7fde778) baseline.
+
+> **Speech quality / AI responses:** For natural speech with **amazon.nova-2-sonic-v1:0**, use **C4b** (`tests/c4b_bedrock_nova_sonic/`).
+
 ---
 
 ## Prerequisites
@@ -104,7 +108,7 @@ After this sequence, stop C3 with `Ctrl+C` and inspect the saved log file.
 Use the captured log file to confirm the participant lifecycle and monitoring counters:
 
 ```bash
-grep -E 'Connected to Vonage Video session|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|monitor: active_streams' logs/c3-pipecat-transport.log
+grep -E 'Connected to Vonage Video session|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|C3 audio frames in/out|monitor: active_streams' logs/c3-pipecat-transport.log
 ```
 
 Successful runs should show:
@@ -113,6 +117,7 @@ Successful runs should show:
 - Participant joined/left lines
 - Client connected/disconnected lines
 - Monitor lines where counters increase and later return to zero after disconnect
+- `C3 audio frames in/out: N` increases while you speak (confirms media in the pipeline)
 - Startup transport config line (log level, media flags, monitor/manual-subscribe settings)
 
 ## Setup (native Linux)

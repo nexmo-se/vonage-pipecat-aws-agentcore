@@ -4,11 +4,14 @@ Test C3: Pipecat Transport — Vonage Video Echo Bot
 
 Runs a Pipecat pipeline that:
     1. Joins the Vonage Video session via the official Vonage Pipecat transport
-  2. Receives audio from browser participants
-    3. Passes audio through VAD and a simple echo stage
+    2. Receives audio from browser participants
+    3. Passes audio through a simple passthrough echo stage
     4. Sends the audio back into the session
 
-Platform: Linux only.  Run via Docker on macOS — see README.md.
+Validated baseline: commits 14beb0c + 2a0bfd1 (monitoring + Playground E2E).
+Pipecat 1.3 additions: enable_rtvi=False and InputAudioRawFrame → OutputAudioRawFrame.
+
+Platform: Linux only. Run via Docker on macOS — see README.md.
 """
 
 import asyncio
@@ -28,7 +31,7 @@ def find_repo_root(start: Path) -> Path:
     workspace_root = Path("/workspace")
     if (workspace_root / ".env").exists():
         return workspace_root
-    return start.resolve()  # .env not found; env vars come from docker-compose env_file
+    return start.resolve()
 
 
 REPO_ROOT = find_repo_root(Path(__file__).parent)
@@ -67,7 +70,6 @@ async def run_echo_bot() -> None:
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
     session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
 
-    # ── Validate env vars ─────────────────────────────────────────
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
@@ -84,7 +86,6 @@ async def run_echo_bot() -> None:
         print(f"ERROR: Private key not found: {private_key_file}")
         sys.exit(1)
 
-    # Optional transport tuning aligned with official docs
     video_connector_log_level = os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO").strip() or "INFO"
     session_enable_migration = env_bool("VONAGE_SESSION_ENABLE_MIGRATION", False)
     clear_buffers_on_interruption = env_bool("VONAGE_CLEAR_BUFFERS_ON_INTERRUPTION", True)
@@ -124,15 +125,16 @@ async def run_echo_bot() -> None:
     monitor_interval_seconds = env_int("VONAGE_MONITOR_INTERVAL_SECONDS", 15)
     debug_event_payloads = env_bool("VONAGE_DEBUG_EVENT_PAYLOADS", False)
 
-    # ── Imports ───────────────────────────────────────────────────
     try:
         from vonage import Auth, Vonage
         from vonage_video import TokenOptions
         from loguru import logger
         from pipecat.audio.vad.silero import SileroVADAnalyzer
+        from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, UserAudioRawFrame
         from pipecat.pipeline.pipeline import Pipeline
         from pipecat.pipeline.runner import PipelineRunner
         from pipecat.pipeline.task import PipelineParams, PipelineTask
+        from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
         from pipecat.transports.vonage.video_connector import (
             SubscribeSettings,
             VonageVideoConnectorTransport,
@@ -143,7 +145,6 @@ async def run_echo_bot() -> None:
         print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
-    # ── Generate publisher token ──────────────────────────────────
     client = Vonage(
         Auth(
             application_id=application_id,
@@ -164,7 +165,6 @@ async def run_echo_bot() -> None:
 
     print(f"Initialising Vonage Pipecat transport for session {session_id} …")
 
-    # ── Build Pipecat pipeline ────────────────────────────────────
     transport = VonageVideoConnectorTransport(
         application_id=application_id,
         session_id=session_id,
@@ -195,14 +195,45 @@ async def run_echo_bot() -> None:
         ),
     )
 
+    class _EchoProcessor(FrameProcessor):
+        """Pipecat 1.3: output transport requires OutputAudioRawFrame (mixed stream only)."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.audio_frame_count = 0
+
+        async def process_frame(self, frame, direction: FrameDirection):
+            await super().process_frame(frame, direction)
+            if isinstance(frame, InputAudioRawFrame):
+                self.audio_frame_count += 1
+                if self.audio_frame_count == 1 or self.audio_frame_count % 100 == 0:
+                    print(f"C3 audio frames in/out: {self.audio_frame_count}", flush=True)
+                await self.push_frame(
+                    OutputAudioRawFrame(
+                        audio=frame.audio,
+                        sample_rate=frame.sample_rate,
+                        num_channels=frame.num_channels,
+                    ),
+                    direction,
+                )
+            elif isinstance(frame, UserAudioRawFrame):
+                pass
+            else:
+                await self.push_frame(frame, direction)
+
+    echo_processor = _EchoProcessor()
+
     pipeline = Pipeline([
-        transport.input(),   # Receive audio from Vonage session
-        transport.output(),  # Send audio frames straight back into the session
+        transport.input(),
+        echo_processor,
+        transport.output(),
     ])
 
     task = PipelineTask(
         pipeline,
         params=PipelineParams(allow_interruptions=True),
+        enable_rtvi=False,
+        cancel_on_idle_timeout=False,
     )
 
     active_streams: set[str] = set()
@@ -224,9 +255,10 @@ async def run_echo_bot() -> None:
         while True:
             await asyncio.sleep(max(1, monitor_interval_seconds))
             logger.info(
-                "monitor: active_streams={} active_subscribers={} event_counts={}",
+                "monitor: active_streams={} active_subscribers={} audio_frames={} event_counts={}",
                 len(active_streams),
                 len(active_subscribers),
+                echo_processor.audio_frame_count,
                 event_counts,
             )
 

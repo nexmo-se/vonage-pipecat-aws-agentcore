@@ -267,6 +267,7 @@ async def run_bedrock_echo_agent() -> None:
     task = PipelineTask(
         pipeline,
         params=PipelineParams(allow_interruptions=True),
+        enable_rtvi=False,
         cancel_on_idle_timeout=False,
         idle_timeout_secs=None,
     )

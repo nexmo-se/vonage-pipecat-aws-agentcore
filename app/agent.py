@@ -375,6 +375,7 @@ class VonagePipecatAgent:
         self._pipeline_task = PipelineTask(
             pipeline,
             params=PipelineParams(allow_interruptions=True),
+            enable_rtvi=False,
             cancel_on_idle_timeout=False,
             idle_timeout_secs=None,
         )

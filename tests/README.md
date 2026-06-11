@@ -17,6 +17,7 @@ Run the folders in this order:
 4. `c4a_aws_bedrock`
 5. `c4b_bedrock_nova_sonic`
 6. `c5_agentcore`
+7. `c6_agentcore_video_transport` (decision gate — run after C5)
 
 C1 is the bootstrap step for the Vonage side. It creates or confirms the session state that C2 and C3 need.
 
@@ -58,6 +59,17 @@ C5 keeps the deployable AgentCore artifact and the invocation check together, wh
 
 That folder contains both the minimal runtime app and the script that invokes the deployed runtime.
 
+### C6 — AgentCore + Video Connector transport (decision gate)
+
+C6 validates whether the **live Pipecat + VonageVideoConnectorTransport pipeline** can run inside AgentCore Runtime with **Vonage SDK-managed TURN** (AgentCore microVMs have no public IP).
+
+This is the production architecture decision gate:
+
+- **C6 PASS** → build `runtime/` + `answer/` (AgentCore hosts the pipeline)
+- **C6 FAIL** → build `api/` + `agent/` on ECS/Fargate (proven `app/` path)
+
+See [c6_agentcore_video_transport/README.md](c6_agentcore_video_transport/README.md) for the full staged test plan.
+
 ## How This Connects To The Full App
 
 The full app in `app/agent.py` clearly builds on the same transport shape proven in C3 and swaps `EchoService` for Nova Sonic plus AgentCore.
@@ -71,7 +83,8 @@ C3: Pipecat transport over Vonage
 C4a: Bedrock credentials + text model
 C4b: Bedrock + Nova Sonic speech pipeline
 C5: AgentCore deploy/invoke
-App: C3 transport + C4b speech + C5 runtime
+C6: AgentCore + live WebRTC pipeline (decision gate)
+App: C3 transport + C4b speech + (C5 bootstrap) + production split per C6 outcome
 ```
 
 ## Practical Guidance

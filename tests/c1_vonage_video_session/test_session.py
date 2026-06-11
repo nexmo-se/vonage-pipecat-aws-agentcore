@@ -4,9 +4,9 @@ Test C1: Vonage Video API — Session Creation
 
 Verifies:
   1. Authentication with VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY
-  2. Video session creation via the Vonage Video REST API
+  2. Video session creation via the Vonage Video REST API (always creates a new session)
   3. Client token generation (publisher role)
-  4. Prints credentials to enter manually in the Vonage Playground
+  4. Updates VONAGE_SESSION_ID in root .env and prints Playground credentials
 
 Platform: Any (macOS, Linux, Windows)
 """
@@ -19,11 +19,6 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = REPO_ROOT / ".env"
-SESSION_PLACEHOLDERS = {
-    "",
-    "your-vonage-session-id",
-    "<your-vonage-session-id>",
-}
 
 # Load .env from the repo root (two levels up from this file)
 load_dotenv(ENV_FILE)
@@ -36,10 +31,9 @@ def resolve_private_key_path(private_key_path: str) -> Path:
     return private_key_file
 
 
-def load_vonage_bootstrap_config() -> tuple[str, Path, str]:
+def load_vonage_bootstrap_config() -> tuple[str, Path]:
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
 
     if not application_id:
         print("ERROR: VONAGE_APPLICATION_ID is not set in .env")
@@ -51,30 +45,47 @@ def load_vonage_bootstrap_config() -> tuple[str, Path, str]:
         print("  Download your application's private.key from the Vonage Dashboard")
         sys.exit(1)
 
-    return application_id, private_key_file, session_id
+    return application_id, private_key_file
 
 
-def is_missing_session_id(session_id: str) -> bool:
-    return session_id.strip().lower() in SESSION_PLACEHOLDERS
-
-
-def persist_session_id_to_env(session_id: str) -> None:
+def _persist_env_var(key: str, value: str) -> None:
     if not ENV_FILE.exists():
         return
 
     lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    assignment = f'{key}="{value}"' if key == "VONAGE_PUBLISHER_TOKEN" else f"{key}={value}"
     replaced = False
     for idx, line in enumerate(lines):
-        if line.strip().startswith("VONAGE_SESSION_ID="):
-            lines[idx] = f"VONAGE_SESSION_ID={session_id}"
+        if line.strip().startswith(f"{key}="):
+            lines[idx] = assignment
             replaced = True
             break
 
     if not replaced:
-        lines.append(f"VONAGE_SESSION_ID={session_id}")
+        lines.append(assignment)
 
     ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def persist_session_id_to_env(session_id: str) -> None:
+    _persist_env_var("VONAGE_SESSION_ID", session_id)
     print(f"✓ Saved VONAGE_SESSION_ID to {ENV_FILE}")
+
+
+def persist_publisher_token_to_env(token: str) -> None:
+    _persist_env_var("VONAGE_PUBLISHER_TOKEN", token)
+    print(f"✓ Saved VONAGE_PUBLISHER_TOKEN to {ENV_FILE}")
+
+
+def playground_url(application_id: str, session_id: str, token: str) -> str:
+    from urllib.parse import quote
+
+    return (
+        "https://tokbox.com/developer/tools/playground/"
+        f"?apiKey={quote(application_id, safe='')}"
+        f"&sessionId={quote(session_id, safe='')}"
+        f"&token={quote(token, safe='')}"
+    )
 
 
 def create_vonage_client(application_id: str, private_key_file: Path):
@@ -93,7 +104,7 @@ def create_vonage_client(application_id: str, private_key_file: Path):
     )
 
 
-def get_or_create_session_id(client, session_id: str) -> str:
+def create_session_id(client) -> str:
     try:
         from vonage_video import SessionOptions
     except ImportError as exc:
@@ -101,16 +112,16 @@ def get_or_create_session_id(client, session_id: str) -> str:
         print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
-    if not is_missing_session_id(session_id):
-        print(f"✓ Using existing session: {session_id}")
-        return session_id
+    previous_session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    if previous_session_id:
+        print(f"Replacing existing VONAGE_SESSION_ID: {previous_session_id}")
 
     print("Creating new Vonage Video session …")
     session = client.video.create_session(SessionOptions(media_mode="routed"))
     session_id = session.session_id
     print(f"✓ Created session: {session_id}")
     persist_session_id_to_env(session_id)
-    print(f"  ➜ Added VONAGE_SESSION_ID={session_id} to your .env file\n")
+    print(f"  ➜ Updated VONAGE_SESSION_ID={session_id} in your .env file\n")
     return session_id
 
 
@@ -135,18 +146,22 @@ def generate_publisher_token(client, session_id: str, expire_time: int = 86400) 
 
 
 def main() -> None:
-    application_id, private_key_file, session_id = load_vonage_bootstrap_config()
+    application_id, private_key_file = load_vonage_bootstrap_config()
     client = create_vonage_client(application_id, private_key_file)
-    session_id = get_or_create_session_id(client, session_id)
+    session_id = create_session_id(client)
     token = generate_publisher_token(client, session_id)
+    persist_publisher_token_to_env(token)
 
     separator = "=" * 60
     print(f"\n{separator}")
-    print("Vonage Playground credentials (https://tokbox.com/developer/tools/playground/)")
+    print("Playground (https://tokbox.com/developer/tools/playground/)")
     print(separator)
-    print(f"API Key:    {application_id}")
-    print(f"Session ID: {session_id}")
-    print(f"Token:      {token}")
+    print("1. Choose  Join existing session  (NOT Create new session)")
+    print(f"2. Session ID: {session_id}")
+    print(f"   (same value as VONAGE_SESSION_ID in root .env)")
+    print(f"3. API Key (if asked): {application_id}")
+    print("4. Connect → Publish (mic on)")
+    print("5. Then run C6 echo/full so the agent joins this same session")
     print(separator)
     print("\nTest C1 PASSED ✓")
 

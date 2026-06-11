@@ -34,10 +34,10 @@ Run C1 with this quick checklist:
 2. Set `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY`.
 3. Ensure your private key file exists at the configured path.
 4. Run `test_session.py`.
-5. Confirm `VONAGE_SESSION_ID` is saved in root `.env` (C1 writes it automatically when created).
-6. Open the printed browser playground URL and confirm you can join.
+5. Confirm `VONAGE_SESSION_ID` is saved in root `.env`.
+6. In [Vonage Playground](https://tokbox.com/developer/tools/playground/): **Join existing session** → paste Session ID from `.env` → Connect → Publish.
 
-When all six are complete, you are ready for C2.
+When all six are complete, you are ready for C2/C6.
 
 ## How `.env` Gets Populated
 
@@ -46,19 +46,13 @@ Before running C1, you provide these required values in root `.env`:
 - `VONAGE_APPLICATION_ID`
 - `VONAGE_PRIVATE_KEY`
 
-At runtime, C1 handles the rest:
+At runtime, C1:
 
-1. Reads `VONAGE_SESSION_ID` from `.env`.
-2. If the value is missing or a placeholder (for example `your-vonage-session-id`), it creates a new Vonage Video session.
-3. Writes the new `VONAGE_SESSION_ID` back to root `.env` automatically.
-4. Generates a publisher token for that session.
-5. Prints a browser playground URL that includes `apiKey`, `sessionId`, and token.
+1. **Always creates a new** Vonage Video session (replaces any existing `VONAGE_SESSION_ID`).
+2. Writes the new `VONAGE_SESSION_ID` back to root `.env` automatically.
+3. Prints Playground instructions (join existing session + Session ID).
 
-Token behavior:
-
-- The token is generated dynamically each run.
-- It is printed to terminal as part of the URL.
-- It is not saved into `.env`.
+**Playground:** use **Join existing session** and paste `VONAGE_SESSION_ID` from `.env`. Do not use **Create new session** — that puts you in a different room than C1/C6.
 
 ---
 
@@ -143,10 +137,12 @@ Open the URL above in a browser to join the video session.
 Test C1 PASSED ✓
 ```
 
-If `.env` already has a real `VONAGE_SESSION_ID`, expected output starts with:
+If `.env` already had a session ID, C1 replaces it:
 
 ```text
-✓ Using existing session: 2_MX...
+Replacing existing VONAGE_SESSION_ID: 1_MX...
+Creating new Vonage Video session …
+✓ Created session: 1_MX...
 ```
 
 ---
@@ -177,9 +173,7 @@ Open the URL above in a browser to join the video session.
 Test C1 PASSED ✓
 ```
 
-C1 now auto-saves `VONAGE_SESSION_ID` into your root `.env` when it creates a new session. Subsequent tests use this value directly.
-
-If `.env` contains a placeholder value such as `your-vonage-session-id`, C1 treats it as missing and creates a real session ID.
+C1 auto-saves a fresh `VONAGE_SESSION_ID` into root `.env` on every run. Use before C6 tests so each session has only one agent.
 
 ## Exit Criteria
 

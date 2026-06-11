@@ -32,6 +32,26 @@ services:
     profiles: [c3]
 
   # ─────────────────────────────────────────────────────────────────
+  # C4b — Bedrock Nova Sonic + Vonage Pipecat transport (Linux only)
+  # Run: docker compose --profile c4b run --rm c4b-bedrock-nova-sonic
+  # Stage 1 credentials: docker compose --profile c4b run --rm c4b-bedrock-nova-sonic python test_bedrock.py
+  # ─────────────────────────────────────────────────────────────────
+  c4b-bedrock-nova-sonic:
+    build:
+      context: ./tests/c4b_bedrock_nova_sonic
+      dockerfile: Dockerfile
+    env_file: .env
+    network_mode: host
+    stdin_open: false
+    tty: false
+    volumes:
+      - ${HOME}/.aws:/root/.aws:ro
+      - .:/workspace:ro
+      - ./private.key:/workspace/private.key:ro
+    command: ["python", "bedrock_echo_agent.py"]
+    profiles: [c4b]
+
+  # ─────────────────────────────────────────────────────────────────
   # app — Full integrated agent (Linux only)
   # Run: docker compose up app
   # ─────────────────────────────────────────────────────────────────
@@ -47,3 +67,20 @@ services:
       - "${PORT:-8000}:8000"
     restart: unless-stopped
     profiles: [app]
+
+  # ─────────────────────────────────────────────────────────────────
+  # C6 — AgentCore + Video Connector validation (ARM64)
+  # Run: docker compose run --rm c6-agentcore-video python network_probe.py
+  # ─────────────────────────────────────────────────────────────────
+  c6-agentcore-video:
+    build:
+      context: ./tests/c6_agentcore_video_transport
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    env_file: .env
+    volumes:
+      - ${HOME}/.aws:/root/.aws:ro
+      - ./private.key:/app/private.key:ro
+    working_dir: /app
+    profiles: [c6]
